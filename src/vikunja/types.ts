@@ -20,6 +20,10 @@ export interface VikunjaTaskSummary {
   lastUpdated?: number;
   projectTitle?: string;
   superProductivityProjectId?: string;
+  vikunjaRelationsLoaded?: boolean;
+  vikunjaParentTaskId?: string;
+  vikunjaParentTaskAmbiguous?: boolean;
+  vikunjaSubtaskTaskIds?: string[];
 }
 
 export interface VikunjaTaskDetails extends VikunjaTaskSummary {
@@ -76,6 +80,7 @@ export interface IssueProviderConfigField {
   pattern?: string;
   advanced?: boolean;
   showIf?: string;
+  defaultValue?: string;
   loadOptions?(
     config: Record<string, unknown>,
     http: IssueProviderHttp,
@@ -131,6 +136,7 @@ export interface IssueProviderDefinition {
   getIssueLink(issueId: string, config: Record<string, unknown>): string;
   issueDisplay: IssueProviderFieldDisplay[];
   fieldMappings?: IssueProviderFieldMapping[];
+  extractSyncValues?(issue: unknown): Record<string, unknown>;
   updateIssue?(
     id: string,
     changes: Record<string, unknown>,
@@ -181,7 +187,13 @@ export interface PluginAPI {
   deleteSecret(key: string): Promise<void>;
   registerIssueProvider(definition: IssueProviderDefinition): void;
   registerHook?(hook: 'taskUpdate', handler: (taskData: unknown) => void | Promise<void>): void;
-  updateTask?(taskId: string, updates: { projectId?: string | null }): Promise<void>;
+  getTasks?(): Promise<Array<{
+    id: string;
+    parentId?: string | null;
+    issueId?: string | null;
+    issueProviderId?: string | null;
+  }>>;
+  updateTask?(taskId: string, updates: { projectId?: string | null; parentId?: string | null }): Promise<void>;
   getAllProjects?(): Promise<Array<{
     id: string;
     title: string;
@@ -220,6 +232,14 @@ export interface VikunjaRawLabel {
   title: string;
 }
 
+export interface VikunjaRawRelatedTask {
+  id: number;
+  title: string;
+  project_id?: number;
+}
+
+export type VikunjaRawRelatedTaskMap = Record<string, VikunjaRawRelatedTask[] | null>;
+
 export interface VikunjaRawTask {
   id: number;
   title: string;
@@ -230,12 +250,13 @@ export interface VikunjaRawTask {
   due_date?: string;
   updated?: string;
   labels?: VikunjaRawLabel[] | null;
+  related_tasks?: VikunjaRawRelatedTaskMap | null;
 }
 
 export interface VikunjaRawProject {
   id: number;
   title: string;
-  parent_project_id?: number;
+  parent_project_id?: number | null;
   is_archived?: boolean;
 }
 

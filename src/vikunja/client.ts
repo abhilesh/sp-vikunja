@@ -8,6 +8,8 @@ import type {
   VikunjaTaskCreatePayload,
   VikunjaRawProject,
   VikunjaRawTask,
+  VikunjaRawRelatedTask,
+  VikunjaRawRelatedTaskMap,
   VikunjaLogSink
 } from './types.js';
 
@@ -18,6 +20,11 @@ const MAX_PER_PAGE = 1000;
 export interface VikunjaClientPaginationOptions {
   page?: number;
   perPage?: number;
+  includeSubtasks?: boolean;
+}
+
+export interface VikunjaTaskReadOptions {
+  includeSubtasks?: boolean;
 }
 
 export interface CreateVikunjaClientOptions extends VikunjaConnectionConfig {
@@ -31,7 +38,7 @@ export interface VikunjaClient {
   readonly taskListUrl: string;
   readonly projectListUrl: string;
   searchTasks(searchTerm: string, options?: VikunjaClientPaginationOptions): Promise<VikunjaRawTask[]>;
-  getTaskById(taskId: number): Promise<VikunjaRawTask>;
+  getTaskById(taskId: number, options?: VikunjaTaskReadOptions): Promise<VikunjaRawTask>;
   updateTask(taskId: number, patch: VikunjaTaskUpdatePatch): Promise<void>;
   createTask(projectId: number, payload: VikunjaTaskCreatePayload): Promise<VikunjaRawTask>;
   listProjects(options?: VikunjaClientPaginationOptions): Promise<VikunjaRawProject[]>;
@@ -160,6 +167,23 @@ function decodePaginatedEnvelope<TItem>(
 function isRawLabel(value: unknown): value is { id: number; title: string } {
   return isRecord(value) && isNumber(value.id) && isString(value.title);
 }
+function isRawRelatedTask(value: unknown): value is VikunjaRawRelatedTask {
+  return (
+    isRecord(value)
+    && isNumber(value.id)
+    && Number.isInteger(value.id)
+    && value.id > 0
+    && isString(value.title)
+    && (value.project_id === undefined || isNumber(value.project_id))
+  );
+}
+
+function isRawRelatedTaskMap(value: unknown): value is VikunjaRawRelatedTaskMap {
+  return isRecord(value) && Object.values(value).every((relatedTasks) => (
+    relatedTasks === null
+    || (Array.isArray(relatedTasks) && relatedTasks.every(isRawRelatedTask))
+  ));
+}
 
 function isRawTask(value: unknown): value is VikunjaRawTask {
   return (
@@ -177,6 +201,7 @@ function isRawTask(value: unknown): value is VikunjaRawTask {
       || value.labels === null
       || (Array.isArray(value.labels) && value.labels.every(isRawLabel))
     )
+    && (value.related_tasks === undefined || value.related_tasks === null || isRawRelatedTaskMap(value.related_tasks))
   );
 }
 
@@ -185,7 +210,7 @@ function isRawProject(value: unknown): value is VikunjaRawProject {
     isRecord(value)
     && isNumber(value.id)
     && isString(value.title)
-    && (value.parent_project_id === undefined || isNumber(value.parent_project_id))
+    && (value.parent_project_id === undefined || value.parent_project_id === null || isNumber(value.parent_project_id))
     && (value.is_archived === undefined || typeof value.is_archived === 'boolean')
   );
 }
@@ -377,29 +402,33 @@ export function createVikunjaClient(options: CreateVikunjaClientOptions): Vikunj
         options.http,
         options.getHeaders,
         page,
-        (currentPage) => ({
-          url: buildRequestUrl(taskListUrl, {
+        (currentPage) => {
+          const params: Record<string, string> = {
             q: searchTerm,
             page: String(currentPage),
             per_page: String(perPage),
             format: 'markdown'
-          })
-        }),
+          };
+
+          if (pagination?.includeSubtasks) {
+            params.expand = 'subtasks';
+          }
+
+          return { url: buildRequestUrl(taskListUrl, params) };
+        },
         isRawTask,
         'task list',
         'task search',
         options.logger,
       );
     },
-    async getTaskById(taskId) {
+    async getTaskById(taskId, readOptions) {
       const parsedTaskId = parsePositiveInteger(taskId, taskId, 'task ID');
       const response = await runGetRequest<unknown>(
         options.http,
         options.getHeaders,
         `${taskListUrl}/${encodeURIComponent(String(parsedTaskId))}`,
-        {
-          format: 'markdown'
-        },
+        { format: 'markdown', ...(readOptions?.includeSubtasks ? { expand: 'subtasks' } : {}) },
         'task fetch',
         options.logger,
       );

@@ -1,4 +1,5 @@
 import { getVikunjaApiToken } from './config/secrets.js';
+import { DEFAULT_VIKUNJA_PROJECT_PREFIX, getLocalVikunjaProjectTitle, getRemoteIdFromLocalVikunjaProjectTitle, getVikunjaProjectPath } from './vikunja/project-path.js';
 import { buildTaskFrontendUrl, createVikunjaClient } from './vikunja/client.js';
 import {
   mapRawTaskToIssueDetails,
@@ -38,7 +39,7 @@ declare const PluginAPI: PluginAPI | undefined;
 
 type VikunjaPluginHost = PluginSecretAPI & Partial<Pick<
   PluginAPI,
-  'getAllProjects' | 'addProject' | 'updateProject'
+  'getTasks' | 'updateTask' | 'getAllProjects' | 'addProject' | 'updateProject'
 >>;
 
 function getSecretApi(api?: VikunjaPluginHost): PluginSecretAPI {
@@ -105,7 +106,6 @@ function parseProjectIds(config: Record<string, unknown>): number[] | undefined 
   return [...new Set(projectIds)];
 }
 
-const LOCAL_VIKUNJA_PROJECT_PREFIX = 'Vikunja · ';
 
 interface ProjectSyncContext {
   projectTitleById: Map<number, string>;
@@ -116,6 +116,20 @@ function isProjectSyncEnabled(config: Record<string, unknown>): boolean {
   return config.syncProjects === true;
 }
 
+function parseProjectPrefix(config: Record<string, unknown>): string {
+  const configured = config.projectPrefix;
+
+  if (configured === undefined) {
+    return DEFAULT_VIKUNJA_PROJECT_PREFIX;
+  }
+
+  if (typeof configured !== 'string') {
+    throw new Error('Vikunja project prefix must be a string.');
+  }
+
+  return configured;
+}
+
 function getProjectSyncHost(api?: VikunjaPluginHost): VikunjaPluginHost {
   if (!api) {
     throw new Error('Super Productivity project APIs are unavailable.');
@@ -124,14 +138,12 @@ function getProjectSyncHost(api?: VikunjaPluginHost): VikunjaPluginHost {
   return api;
 }
 
-function getLocalVikunjaProjectTitle(project: VikunjaRawProject): string {
-  const title = project.title.trim() || `Project ${project.id}`;
-  return `${LOCAL_VIKUNJA_PROJECT_PREFIX}${title} [${project.id}]`;
-}
 
 async function syncLocalVikunjaProjects(
   host: VikunjaPluginHost,
   projects: VikunjaRawProject[],
+  projectsById: Map<number, VikunjaRawProject>,
+  prefix: string,
 ): Promise<Map<number, string>> {
   if (!host.getAllProjects || !host.addProject) {
     throw new Error(
@@ -147,12 +159,8 @@ async function syncLocalVikunjaProjects(
       continue;
     }
 
-    const expectedTitle = getLocalVikunjaProjectTitle(project);
-    const marker = ` [${project.id}]`;
-    const existingProject = localProjects.find((candidate) =>
-      candidate.title.startsWith(LOCAL_VIKUNJA_PROJECT_PREFIX)
-      && candidate.title.endsWith(marker),
-    );
+    const expectedTitle = getLocalVikunjaProjectTitle(project, projectsById, prefix);
+    const existingProject = localProjects.find((candidate) => getRemoteIdFromLocalVikunjaProjectTitle(candidate.title) === project.id);
 
     if (existingProject) {
       if (existingProject.title !== expectedTitle && host.updateProject) {
@@ -175,14 +183,16 @@ async function loadProjectSyncContext(
   config: Record<string, unknown>,
 ): Promise<ProjectSyncContext> {
   const projects = await client.listProjects();
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
   const configuredProjectIds = parseProjectIds(config);
   const selectedProjects = configuredProjectIds === undefined || configuredProjectIds.length === 0
     ? projects
     : projects.filter((project) => configuredProjectIds.includes(project.id));
+  const prefix = parseProjectPrefix(config);
 
   return {
-    projectTitleById: new Map(selectedProjects.map((project) => [project.id, project.title])),
-    localProjectIdByRemoteId: await syncLocalVikunjaProjects(host, selectedProjects),
+    projectTitleById: new Map(projects.map((project) => [project.id, getVikunjaProjectPath(project, projectsById)])),
+    localProjectIdByRemoteId: await syncLocalVikunjaProjects(host, selectedProjects, projectsById, prefix),
   };
 }
 
@@ -560,6 +570,13 @@ export function buildVikunjaIssueProviderDefinition(
         description: 'The local or remote Vikunja instance URL.'
       },
       {
+        key: 'projectPrefix',
+        type: 'input',
+        label: 'Local project prefix',
+        description: 'Literal prefix for local Vikunja project mirrors; leave empty for no prefix.',
+        defaultValue: DEFAULT_VIKUNJA_PROJECT_PREFIX
+      },
+      {
         key: 'projectIds',
         type: 'multiSelect',
         label: 'Vikunja projects',
@@ -568,10 +585,11 @@ export function buildVikunjaIssueProviderDefinition(
           const client = createAuthenticatedClient(config, http, secretApi);
           const projects = await client.listProjects();
 
+          const projectsById = new Map(projects.map((project) => [project.id, project]));
           return projects
             .filter((project) => project.is_archived !== true)
             .map((project) => ({
-              label: `${project.title} (ID ${project.id})`,
+              label: `${getVikunjaProjectPath(project, projectsById)} (ID ${project.id})`,
               value: String(project.id)
             }));
         }
@@ -580,7 +598,7 @@ export function buildVikunjaIssueProviderDefinition(
         key: 'syncProjects',
         type: 'checkbox',
         label: 'Mirror Vikunja projects locally',
-        description: 'Create or rename flat local project mirrors for the selected Vikunja projects. This only changes local Super Productivity projects.'
+        description: 'Create or rename local project mirrors for selected Vikunja projects using their full path and stable ID. This only changes local Super Productivity projects.'
       },
       {
         key: 'defaultProjectId',
@@ -590,11 +608,12 @@ export function buildVikunjaIssueProviderDefinition(
         loadOptions: async (config, http) => {
           const client = createAuthenticatedClient(config, http, secretApi);
           const projects = await client.listProjects();
+          const projectsById = new Map(projects.map((project) => [project.id, project]));
 
           return projects
             .filter((project) => project.is_archived !== true && project.id > 0)
             .map((project) => ({
-              label: `${project.title} (ID ${project.id})`,
+              label: `${getVikunjaProjectPath(project, projectsById)} (ID ${project.id})`,
               value: String(project.id)
             }));
         }
@@ -619,7 +638,7 @@ export function buildVikunjaIssueProviderDefinition(
       const projectContext = isProjectSyncEnabled(config)
         ? await loadProjectSyncContext(client, getProjectSyncHost(secretApi), config)
         : undefined;
-      const tasks = await client.searchTasks(searchTerm);
+      const tasks = await client.searchTasks(searchTerm, { includeSubtasks: true });
       const filteredTasks = projectIds === undefined || projectIds.length === 0
         ? tasks
         : tasks.filter((task) => task.project_id !== undefined && projectIds.includes(task.project_id));
@@ -630,7 +649,7 @@ export function buildVikunjaIssueProviderDefinition(
       const taskId = parseCanonicalTaskId(issueId);
 
       const client = createAuthenticatedClient(config, http, secretApi);
-      const task = await client.getTaskById(taskId);
+      const task = await client.getTaskById(taskId, { includeSubtasks: true });
       const projectContext = isProjectSyncEnabled(config)
         ? await loadProjectSyncContext(client, getProjectSyncHost(secretApi), config)
         : undefined;
@@ -643,6 +662,27 @@ export function buildVikunjaIssueProviderDefinition(
       return buildTaskFrontendUrl(String(config.baseUrl ?? ''), taskId);
     },
     fieldMappings,
+    extractSyncValues(issue) {
+      if (!isRecord(issue)) {
+        return {};
+      }
+
+      const parentTaskId = issue.vikunjaParentTaskAmbiguous === true
+        ? null
+        : typeof issue.vikunjaParentTaskId === 'string' && /^[1-9]\d*$/.test(issue.vikunjaParentTaskId)
+          ? issue.vikunjaParentTaskId
+          : null;
+      const subtaskTaskIds = Array.isArray(issue.vikunjaSubtaskTaskIds)
+        ? [...new Set(issue.vikunjaSubtaskTaskIds.filter((id): id is string => typeof id === 'string' && /^[1-9]\d*$/.test(id)))]
+        : [];
+
+      return {
+        vikunjaRelationsLoaded: issue.vikunjaRelationsLoaded === true,
+        vikunjaParentTaskId: parentTaskId,
+        vikunjaParentTaskAmbiguous: issue.vikunjaParentTaskAmbiguous === true,
+        vikunjaSubtaskTaskIds: subtaskTaskIds,
+      };
+    },
     async updateIssue(issueId, changes, config, http) {
       const taskId = parseCanonicalTaskId(issueId);
 
@@ -751,6 +791,59 @@ function registerVikunjaTokenButton(api: PluginAPI): void {
   });
 }
 
+
+const VIKUNJA_PLUGIN_ID = 'vikunja-super-productivity-plugin';
+
+interface LocalTaskHierarchyRecord {
+  id: string;
+  parentId?: string | null;
+  issueId?: string | null;
+  issueProviderId?: string | null;
+}
+
+function isCanonicalRemoteTaskId(value: unknown): value is string {
+  return typeof value === 'string' && /^[1-9]\d*$/.test(value);
+}
+
+function isLocalTaskId(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+function isVikunjaLinkedTask(task: LocalTaskHierarchyRecord): boolean {
+  return isCanonicalRemoteTaskId(task.issueId)
+    && (task.issueProviderId === undefined
+      || task.issueProviderId === null
+      || task.issueProviderId === VIKUNJA_PLUGIN_ID);
+}
+
+function wouldCreateLocalTaskCycle(
+  tasks: LocalTaskHierarchyRecord[],
+  childTaskId: string,
+  parentTaskId: string,
+): boolean {
+  let currentTaskId: string | undefined = parentTaskId;
+  const visited = new Set<string>();
+
+  while (currentTaskId) {
+    if (currentTaskId === childTaskId) {
+      return true;
+    }
+
+    if (visited.has(currentTaskId)) {
+      return true;
+    }
+    visited.add(currentTaskId);
+
+    const parentTask = tasks.find((task) => task.id === currentTaskId);
+    if (!parentTask || !isLocalTaskId(parentTask.parentId)) {
+      return false;
+    }
+    currentTaskId = parentTask.parentId;
+  }
+
+  return false;
+}
+
 function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
   if (!api.registerHook || !api.updateTask) {
     return;
@@ -759,36 +852,107 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
   const updateTask = api.updateTask;
   const updatingTaskIds = new Set<string>();
 
+  const applyLocalUpdate = async (
+    taskId: string,
+    updates: { projectId?: string | null; parentId?: string | null },
+  ): Promise<void> => {
+    if (updatingTaskIds.has(taskId)) {
+      return;
+    }
+
+    updatingTaskIds.add(taskId);
+    try {
+      await updateTask(taskId, updates);
+    } finally {
+      updatingTaskIds.delete(taskId);
+    }
+  };
+
   api.registerHook('taskUpdate', async (taskData) => {
     if (!isRecord(taskData)) {
       return;
     }
 
     const taskId = taskData.id;
-    const taskProjectId = taskData.projectId;
     const syncValues = taskData.issueLastSyncedValues;
 
     if (
       typeof taskId !== 'string'
       || !isRecord(syncValues)
-      || typeof syncValues.superProductivityProjectId !== 'string'
-      || taskProjectId === syncValues.superProductivityProjectId
       || updatingTaskIds.has(taskId)
     ) {
       return;
     }
 
-    updatingTaskIds.add(taskId);
-    try {
-      await updateTask(taskId, {
-        projectId: syncValues.superProductivityProjectId,
-      });
-    } finally {
-      updatingTaskIds.delete(taskId);
+    const updates: { projectId?: string | null; parentId?: string | null } = {};
+    if (
+      typeof syncValues.superProductivityProjectId === 'string'
+      && taskData.projectId !== syncValues.superProductivityProjectId
+    ) {
+      updates.projectId = syncValues.superProductivityProjectId;
+    }
+
+    let linkedTasks: LocalTaskHierarchyRecord[] = [];
+    if (syncValues.vikunjaRelationsLoaded === true && api.getTasks) {
+      try {
+        linkedTasks = await api.getTasks();
+      } catch {
+        linkedTasks = [];
+      }
+    }
+
+    const linkedTaskByRemoteId = new Map<string, LocalTaskHierarchyRecord>();
+    for (const task of linkedTasks) {
+      if (isVikunjaLinkedTask(task)) {
+        linkedTaskByRemoteId.set(task.issueId as string, task);
+      }
+    }
+
+    if (syncValues.vikunjaRelationsLoaded === true) {
+      const parentRemoteId = syncValues.vikunjaParentTaskAmbiguous === true
+        ? undefined
+        : isCanonicalRemoteTaskId(syncValues.vikunjaParentTaskId)
+          ? syncValues.vikunjaParentTaskId
+          : undefined;
+      const localParent = parentRemoteId ? linkedTaskByRemoteId.get(parentRemoteId) : undefined;
+
+      if (
+        localParent
+        && localParent.id !== taskId
+        && taskData.parentId !== localParent.id
+        && !wouldCreateLocalTaskCycle(linkedTasks, taskId, localParent.id)
+      ) {
+        updates.parentId = localParent.id;
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      await applyLocalUpdate(taskId, updates);
+    }
+
+    if (syncValues.vikunjaRelationsLoaded !== true) {
+      return;
+    }
+
+    const childRemoteIds = Array.isArray(syncValues.vikunjaSubtaskTaskIds)
+      ? syncValues.vikunjaSubtaskTaskIds.filter(isCanonicalRemoteTaskId)
+      : [];
+
+    for (const childRemoteId of childRemoteIds) {
+      const localChild = linkedTaskByRemoteId.get(childRemoteId);
+      if (
+        !localChild
+        || localChild.id === taskId
+        || localChild.parentId === taskId
+        || wouldCreateLocalTaskCycle(linkedTasks, localChild.id, taskId)
+      ) {
+        continue;
+      }
+
+      await applyLocalUpdate(localChild.id, { parentId: taskId });
     }
   });
 }
-
 function getHostPluginAPI(): PluginAPI | undefined {
   const globalApi = (globalThis as typeof globalThis & HostPluginGlobal).PluginAPI;
 

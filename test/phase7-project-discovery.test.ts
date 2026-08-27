@@ -27,7 +27,7 @@ function taskEnvelope(items: unknown[]) {
 it('exposes dynamic project options with ID-disambiguated names and no archived projects', async () => {
   const http = createHttpStub();
   vi.mocked(http.get).mockResolvedValue(projectEnvelope([
-    { id: 2, title: 'Research', is_archived: false },
+    { id: 2, title: 'Research', parent_project_id: null, is_archived: false },
     { id: 7, title: 'Research', is_archived: false },
     { id: 8, title: 'Old', is_archived: true },
   ]));
@@ -130,7 +130,7 @@ it('mirrors selected Vikunja projects locally and attaches imported tasks to the
       superProductivityProjectId: 'local-research',
     },
   ]);
-  expect(addedProjects).toEqual([{ title: 'Vikunja · Research [2]' }]);
+  expect(addedProjects).toEqual([{ title: 'Vikunja · Research [Vikunja:2]' }]);
   expect(host.getAllProjects).toHaveBeenCalledOnce();
 });
 
@@ -160,8 +160,57 @@ it('renames an existing local mirror when a Vikunja project is renamed', async (
   }, http);
 
   expect(host.addProject).not.toHaveBeenCalled();
-  expect(updateProject).toHaveBeenCalledWith('local-research', { title: 'Vikunja · Research [2]' });
+  expect(updateProject).toHaveBeenCalledWith('local-research', { title: 'Vikunja · Research [Vikunja:2]' });
 });
+
+it('mirrors nested projects with a literal configurable prefix and full path', async () => {
+  const http = createHttpStub();
+  vi.mocked(http.get).mockImplementation(async (url) => {
+    if (url.includes('/api/v2/projects')) {
+      return projectEnvelope([
+        { id: 1, title: 'Parent', is_archived: false },
+        { id: 2, title: 'Child', parent_project_id: 1, is_archived: false },
+      ]);
+    }
+
+    return taskEnvelope([
+      { id: 42, title: 'Nested task', project_id: 2, done: false },
+    ]);
+  });
+  const addedProjects: Array<{ title: string }> = [];
+  const host = {
+    getSecret: vi.fn(async () => 'synthetic-token'),
+    setSecret: vi.fn(async () => undefined),
+    deleteSecret: vi.fn(async () => undefined),
+    getAllProjects: vi.fn(async () => []),
+    addProject: vi.fn(async (projectData: { title: string }) => {
+      addedProjects.push(projectData);
+      return 'local-child';
+    }),
+    updateProject: vi.fn(async () => undefined),
+  };
+  const definition = buildVikunjaIssueProviderDefinition(host);
+
+  await expect(
+    definition.searchIssues('nested', {
+      baseUrl: 'https://vikunja.example/',
+      projectIds: ['2'],
+      projectPrefix: 'Work: ',
+      syncProjects: true,
+    }, http),
+  ).resolves.toMatchObject([
+    {
+      id: '42',
+      projectTitle: 'Parent / Child',
+      superProductivityProjectId: 'local-child',
+    },
+  ]);
+
+  expect(addedProjects).toEqual([
+    { title: 'Work: Parent / Child [Vikunja:2]' },
+  ]);
+});
+
 
 it('maps the local project field as pull-only task metadata', () => {
   const definition = buildVikunjaIssueProviderDefinition({

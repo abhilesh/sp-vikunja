@@ -137,6 +137,20 @@ function toOptionalLabelIds(labels: VikunjaRawTask['labels']): string[] | undefi
   return labels?.map((label) => String(label.id));
 }
 
+function toRelationTaskIds(
+  task: VikunjaRawTask,
+  relationKind: 'subtask' | 'parenttask',
+): string[] | undefined {
+  if (task.related_tasks === undefined) {
+    return undefined;
+  }
+
+  const relatedTasks = task.related_tasks?.[relationKind] ?? [];
+  return [...new Set(relatedTasks
+    .filter((relatedTask) => Number.isSafeInteger(relatedTask.id) && relatedTask.id > 0)
+    .map((relatedTask) => String(relatedTask.id)))];
+}
+
 function toMappedFields(
   task: VikunjaRawTask,
   context?: VikunjaTaskMappingContext,
@@ -153,6 +167,24 @@ function toMappedFields(
     priority: task.priority,
     lastUpdated: toOptionalLastUpdated(task.updated)
   };
+  const parentTaskIds = toRelationTaskIds(task, 'parenttask');
+  const subtaskTaskIds = toRelationTaskIds(task, 'subtask');
+
+  if (task.related_tasks !== undefined) {
+    fields.vikunjaRelationsLoaded = true;
+  }
+
+  if (parentTaskIds) {
+    fields.vikunjaParentTaskAmbiguous = parentTaskIds.length > 1;
+
+    if (parentTaskIds.length === 1) {
+      fields.vikunjaParentTaskId = parentTaskIds[0];
+    }
+  }
+
+  if (subtaskTaskIds) {
+    fields.vikunjaSubtaskTaskIds = subtaskTaskIds;
+  }
 
   if (dueWithTime) {
     fields.dueDate = dueWithTime;

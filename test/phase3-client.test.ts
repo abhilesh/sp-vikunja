@@ -55,6 +55,46 @@ it('searches tasks by sending an encoded request URL with q and format=markdown'
   );
   expect(getHeaders).toHaveBeenCalledTimes(1);
 });
+it('requests expanded subtasks when hierarchy metadata is requested', async () => {
+  const { http, getSpy } = createHttpStub(async (url) => {
+    if (url.includes('/tasks?')) {
+      return {
+        items: [{ id: 42, title: 'Parent', related_tasks: { subtask: [{ id: 43, title: 'Child' }] } }],
+        page: 1,
+        per_page: 50,
+        total: 1,
+        total_pages: 1
+      };
+    }
+
+    return {
+      id: 42,
+      title: 'Parent',
+      related_tasks: { subtask: [{ id: 43, title: 'Child' }] }
+    };
+  });
+  const client = createVikunjaClient({
+    baseUrl: 'https://vikunja.example',
+    http,
+    getHeaders: async () => ({ Authorization: 'Bearer synthetic-token' })
+  });
+
+  await client.searchTasks('parent', { includeSubtasks: true });
+  await client.getTaskById(42, { includeSubtasks: true });
+
+  expect(getSpy).toHaveBeenNthCalledWith(
+    1,
+    'https://vikunja.example/api/v2/tasks?q=parent&page=1&per_page=50&format=markdown&expand=subtasks',
+    expect.objectContaining({ responseType: 'json' }),
+  );
+  expect(getSpy).toHaveBeenNthCalledWith(
+    2,
+    'https://vikunja.example/api/v2/tasks/42',
+    expect.objectContaining({
+      params: { format: 'markdown', expand: 'subtasks' }
+    }),
+  );
+});
 
 it('accepts Vikunja tasks whose labels field is null when no labels are assigned', async () => {
   const { http } = createHttpStub(async () => ({
@@ -373,7 +413,7 @@ it('uses the client for provider search, fetch, and connection callbacks', async
     }
 
     if (url.endsWith('/tasks/42')) {
-      expect(options?.params).toEqual({ format: 'markdown' });
+      expect(options?.params).toEqual({ format: 'markdown', expand: 'subtasks' });
       return {
         id: 42,
         title: 'Imported task',
@@ -388,7 +428,7 @@ it('uses the client for provider search, fetch, and connection callbacks', async
     }
 
     expect(url).toBe(
-      'https://vikunja.example/api/v2/tasks?q=imported&page=1&per_page=50&format=markdown',
+      'https://vikunja.example/api/v2/tasks?q=imported&page=1&per_page=50&format=markdown&expand=subtasks',
     );
     expect(options).toEqual({
       headers: {
