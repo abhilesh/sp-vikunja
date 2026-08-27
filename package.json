@@ -1,0 +1,22 @@
+{
+  "name": "vikunja-super-productivity-plugin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+      "test:watch": "vitest",
+      "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
+      "build": "node -e \"const fs=require('node:fs'); const path='dist/vikunja-super-productivity-plugin-package'; fs.mkdirSync(path,{recursive:true}); fs.copyFileSync('manifest.json', path + '/manifest.json')\" && esbuild src/plugin.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=dist/vikunja-super-productivity-plugin-package/plugin.js",
+      "package": "npm run build && node -e \"const fs=require('node:fs'); const fixed=new Date('2000-01-01T00:00:00.000Z'); for (const file of ['dist/vikunja-super-productivity-plugin-package/manifest.json','dist/vikunja-super-productivity-plugin-package/plugin.js']) fs.utimesSync(file, fixed, fixed); fs.rmSync('dist/vikunja-super-productivity-plugin-0.1.0.zip', {force:true})\" && zip -X -FS -j -q dist/vikunja-super-productivity-plugin-0.1.0.zip dist/vikunja-super-productivity-plugin-package/manifest.json dist/vikunja-super-productivity-plugin-package/plugin.js",
+      "dev": "esbuild src/plugin.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=dist/vikunja-super-productivity-plugin-package/plugin.js --watch"
+  },
+  "dependencies": {
+    "@super-productivity/plugin-api": "1.0.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.21.5",
+    "typescript": "5.6.3",
+    "vitest": "2.1.8"
+  }
+}

@@ -1,0 +1,11 @@
+# Disposable local Vikunja state
+vikunja-test/db/*
+vikunja-test/files/*
+
+# Isolated implementation worktrees
+.worktrees/
+
+# Node / build artifacts
+node_modules/
+*.tsbuildinfo
+dist/

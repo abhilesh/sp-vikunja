@@ -1,0 +1,27 @@
+{
+  "id": "vikunja-super-productivity-plugin",
+  "name": "Vikunja",
+  "version": "0.1.0",
+  "description": "Super Productivity issue provider for Vikunja",
+  "manifestVersion": 1,
+  "minSupVersion": "18.19.0",
+  "type": "issueProvider",
+  "permissions": [
+    "http",
+    "updateTask"
+  ],
+  "hooks": [
+    "taskUpdate"
+  ],
+  "iFrame": false,
+  "issueProvider": {
+    "allowPrivateNetwork": true,
+    "pollIntervalMs": 600000,
+    "icon": "open_project",
+    "humanReadableName": "Vikunja",
+    "issueStrings": {
+      "singular": "Task",
+      "plural": "Tasks"
+    }
+  }
+}
