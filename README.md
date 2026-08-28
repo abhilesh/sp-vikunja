@@ -81,6 +81,12 @@ npm run package
 
 The test suite covers API validation, mapping, synchronization, project paths, hierarchy/subtasks, task creation, label pull behavior, deletion safety, reliability, logging redaction, registration, and packaging assumptions.
 
+## Verification status
+
+Automated tests, production typechecking, bundling, packaging, archive-content checks, host-load smoke checks, and credential-pattern scans pass. The packaged archive contains only `manifest.json` and `plugin.js`.
+
+The disposable Vikunja fixture and token were verified directly against the local API. Full live provider verification remains blocked on Super Productivity 18.19.0: its provider configuration rejects requests to both `http://localhost:3456` and `http://127.0.0.1:3456`, although the same endpoint responds successfully outside the app. To complete the live matrix, use a Super Productivity host/profile that permits the manifest's private-network provider access or expose the disposable Vikunja instance through an HTTPS endpoint reachable by the app, then repeat import, hierarchy/subtask, two-way update, restart, offline, and safety checks.
+
 ## Safety and support boundaries
 
 The plugin intentionally does not perform remote task deletion, automatic remote label creation, or destructive API operations without an explicit reviewed feature change. Network failures and failed writes should remain recoverable so local changes can be retried.
