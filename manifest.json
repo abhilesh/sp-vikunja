@@ -8,7 +8,13 @@
   "type": "issueProvider",
   "permissions": [
     "http",
-    "updateTask"
+    "updateTask",
+    "getTasks",
+    "getAllProjects",
+    "addProject",
+    "updateProject",
+    "openDialog",
+    "showSnack"
   ],
   "hooks": [
     "taskUpdate"

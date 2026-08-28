@@ -17,11 +17,12 @@ import {
 } from './vikunja/mapper.js';
 import type {
   IssueProviderDefinition,
-  IssueProviderFieldMapping,
+  VikunjaIssueProviderFieldMapping,
   IssueProviderHttp,
   PluginAPI,
   PluginSecretAPI,
   IssueProviderCreateInput,
+  IssueProviderCreateResult,
   VikunjaIssueState,
   PluginDialogConfig,
   VikunjaRawProject,
@@ -345,12 +346,16 @@ function parseUpdatePatch(changes: Record<string, unknown>):
   throw new Error('Vikunja updateIssue only supports title, description, completion state, or due-date fields.');
 }
 
-function buildCreatePayload(task: IssueProviderCreateInput): {
+function buildCreatePayload(taskOrTitle: string | IssueProviderCreateInput): {
   title: string;
   description?: string;
   done?: boolean;
   due_date?: string;
 } {
+  const task: IssueProviderCreateInput = typeof taskOrTitle === 'string'
+    ? { title: taskOrTitle }
+    : taskOrTitle;
+
   if (!isRecord(task)) {
     throw new Error('Vikunja create task data must be an object.');
   }
@@ -464,7 +469,7 @@ function normalizeConnectionError(error: unknown): Error {
 export function buildVikunjaIssueProviderDefinition(
   secretApi?: VikunjaPluginHost,
 ): IssueProviderDefinition {
-  const fieldMappings: IssueProviderFieldMapping[] = [
+  const fieldMappings: VikunjaIssueProviderFieldMapping[] = [
     {
       taskField: 'title',
       issueField: 'title',
@@ -573,8 +578,7 @@ export function buildVikunjaIssueProviderDefinition(
         key: 'projectPrefix',
         type: 'input',
         label: 'Local project prefix',
-        description: 'Literal prefix for local Vikunja project mirrors; leave empty for no prefix.',
-        defaultValue: DEFAULT_VIKUNJA_PROJECT_PREFIX
+        description: `Literal prefix for local Vikunja project mirrors; leave empty for no prefix. Default: ${DEFAULT_VIKUNJA_PROJECT_PREFIX}`
       },
       {
         key: 'projectIds',
@@ -699,16 +703,30 @@ export function buildVikunjaIssueProviderDefinition(
       const client = createAuthenticatedClient(config, http, secretApi);
       await client.updateTask(taskId, patch);
     },
-    async createIssue(task, config, http) {
+    async createIssue(
+      titleOrTask: string | IssueProviderCreateInput,
+      config,
+      http,
+    ): Promise<IssueProviderCreateResult> {
       const projectId = parseDefaultProjectId(config);
-      const payload = buildCreatePayload(task);
+      const payload = buildCreatePayload(titleOrTask);
       const client = createAuthenticatedClient(config, http, secretApi);
 
       try {
         const createdTask = await client.createTask(projectId, payload);
-        return {
+        const issueData = {
           ...mapRawTaskToIssueDetails(createdTask),
           url: buildTaskFrontendUrl(String(config.baseUrl ?? ''), createdTask.id)
+        };
+
+        return {
+          issueId: String(createdTask.id),
+          issueNumber: createdTask.id,
+          issueData,
+          // Super Productivity 18.19 accepted the older object-based result
+          // directly. Keeping the mapped fields at the top level is harmless
+          // to the current host and preserves that runtime compatibility.
+          ...issueData,
         };
       } catch (error) {
         if (isNetworkFailure(error)) {

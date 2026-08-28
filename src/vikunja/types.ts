@@ -80,7 +80,6 @@ export interface IssueProviderConfigField {
   pattern?: string;
   advanced?: boolean;
   showIf?: string;
-  defaultValue?: string;
   loadOptions?(
     config: Record<string, unknown>,
     http: IssueProviderHttp,
@@ -105,14 +104,29 @@ export interface IssueProviderFieldMapping {
     | 'dueDay'
     | 'dueWithTime'
     | 'timeEstimate'
-    | 'tagIds'
-    | 'projectId';
+    | 'tagIds';
   issueField: string;
   defaultDirection: IssueProviderSyncDirection;
   mutuallyExclusive?: string[];
   toIssueValue(taskValue: unknown, ctx: { issueId: string; issueNumber?: number }): unknown;
   toTaskValue(issueValue: unknown, ctx: { issueId: string; issueNumber?: number }): unknown;
 }
+
+/**
+ * Super Productivity's current public field union does not include
+ * `projectId`, but the host adapter accepts it at runtime. The plugin keeps
+ * this pull-only extension isolated because removing it prevents imported
+ * tasks from being assigned to their local mirrored project and the existing
+ * 18.19/current-host compatibility path from repairing Inbox assignment.
+ */
+export interface VikunjaProjectAssignmentFieldMapping
+  extends Omit<IssueProviderFieldMapping, 'taskField'> {
+  taskField: 'projectId';
+}
+
+export type VikunjaIssueProviderFieldMapping =
+  | IssueProviderFieldMapping
+  | VikunjaProjectAssignmentFieldMapping;
 
 export interface IssueProviderDefinition {
   configFields: IssueProviderConfigField[];
@@ -135,7 +149,7 @@ export interface IssueProviderDefinition {
   ): Promise<VikunjaTaskDetails>;
   getIssueLink(issueId: string, config: Record<string, unknown>): string;
   issueDisplay: IssueProviderFieldDisplay[];
-  fieldMappings?: IssueProviderFieldMapping[];
+  fieldMappings?: VikunjaIssueProviderFieldMapping[];
   extractSyncValues?(issue: unknown): Record<string, unknown>;
   updateIssue?(
     id: string,
@@ -144,10 +158,10 @@ export interface IssueProviderDefinition {
     http: IssueProviderHttp,
   ): Promise<void>;
   createIssue?(
-    task: IssueProviderCreateInput,
+    title: string,
     config: Record<string, unknown>,
     http: IssueProviderHttp,
-  ): Promise<VikunjaTaskDetails>;
+  ): Promise<IssueProviderCreateResult>;
   deleteIssue?(
     id: string,
     config: Record<string, unknown>,
@@ -179,6 +193,12 @@ export interface PluginSecretAPI {
   getSecret(key: string): Promise<string | null>;
   setSecret(key: string, value: string): Promise<void>;
   deleteSecret(key: string): Promise<void>;
+}
+
+export interface IssueProviderCreateResult {
+  issueId: string;
+  issueNumber?: number;
+  issueData: VikunjaTaskDetails;
 }
 
 export interface PluginAPI {

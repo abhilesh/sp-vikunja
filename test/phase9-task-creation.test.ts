@@ -30,34 +30,35 @@ it('requires an explicit default project before creating a task', async () => {
   const definition = buildVikunjaIssueProviderDefinition(secretApi);
 
   await expect(
-    definition.createIssue?.({ title: 'New task' }, { baseUrl: 'https://vikunja.example/' }, http),
+    definition.createIssue?.('New task', { baseUrl: 'https://vikunja.example/' }, http),
   ).rejects.toThrowError(/default project/i);
   expect(postSpy).not.toHaveBeenCalled();
 });
 
-it('creates a Vikunja task with mapped fields and returns an immediately linked issue', async () => {
+it('creates a Vikunja task through the official title/result contract', async () => {
   const { http, postSpy } = createHttpStub();
   const definition = buildVikunjaIssueProviderDefinition(secretApi);
 
   await expect(
     definition.createIssue?.(
-      { title: 'New task', notes: 'Description', isDone: true, dueDay: '2026-08-27' },
+      'New task',
       { baseUrl: 'https://vikunja.example/root/', defaultProjectId: '2' },
       http,
     ),
   ).resolves.toMatchObject({
-    id: '99',
-    title: 'Created task',
-    url: 'https://vikunja.example/root/tasks/99'
+    issueId: '99',
+    issueNumber: 99,
+    issueData: {
+      id: '99',
+      title: 'Created task',
+      url: 'https://vikunja.example/root/tasks/99'
+    }
   });
 
   expect(postSpy).toHaveBeenCalledWith(
     'https://vikunja.example/root/api/v2/projects/2/tasks?format=markdown',
     {
-      title: 'New task',
-      description: 'Description',
-      done: true,
-      due_date: '2026-08-27T00:00:00.000Z'
+      title: 'New task'
     },
     {
       headers: {
@@ -76,7 +77,7 @@ it('surfaces uncertain network creates for manual reconciliation without retryin
 
   await expect(
     definition.createIssue?.(
-      { title: 'Possibly created' },
+      'Possibly created',
       { baseUrl: 'https://vikunja.example/', defaultProjectId: '2' },
       http,
     ),
