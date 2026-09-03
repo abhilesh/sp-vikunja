@@ -42,7 +42,7 @@ npm run package
 The installable archive is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.3.14.zip
+dist/vikunja-super-productivity-plugin-0.1.0.zip
 ```
 
 The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
@@ -50,7 +50,7 @@ The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
 ### Install in Super Productivity
 
 1. Open `Settings → Plugins → Choose Plugin File`.
-2. Select `vikunja-super-productivity-plugin-0.3.14.zip`.
+2. Select `vikunja-super-productivity-plugin-0.1.0.zip`.
 3. Enable the Vikunja issue provider if it is not enabled automatically.
 4. Configure the provider using the steps below.
 
