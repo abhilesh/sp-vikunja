@@ -1,7 +1,7 @@
 {
   "id": "vikunja-super-productivity-plugin",
   "name": "Vikunja",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "Super Productivity issue provider for Vikunja",
   "manifestVersion": 1,
   "minSupVersion": "18.19.0",

@@ -244,6 +244,12 @@ export interface PluginAPI {
     onClick: () => void;
     color?: 'primary' | 'accent' | 'warn';
   }): void;
+  registerMenuEntry?(menuEntry: {
+    label: string;
+    icon?: string;
+    onClick: () => void;
+    color?: 'primary' | 'accent' | 'warn';
+  }): void;
   openDialog?(dialog: PluginDialogConfig): Promise<void>;
   /** Available on newer hosts; older hosts fall back to immediate startup work. */
   onReady?(handler: () => void | Promise<void>): void;

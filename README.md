@@ -1,123 +1,184 @@
 # Vikunja for Super Productivity
 
-An issue-provider plugin that connects [Super Productivity](https://super-productivity.com/) to [Vikunja](https://vikunja.io/) through the Vikunja REST API v2.
+A Super Productivity issue-provider plugin for connecting [Vikunja](https://vikunja.io/) to [Super Productivity](https://super-productivity.com/) through the Vikunja REST API v2.
 
 ## Features
 
-- Search and import Vikunja tasks into Super Productivity.
-- Import all matching Vikunja tasks through Super Productivity's native backlog-import flow.
-- Keep links to the original Vikunja tasks.
+- Search and import Vikunja tasks from the Super Productivity issue panel.
+- Import all matching active tasks through Super Productivity's native backlog-import flow.
+- Keep imported tasks linked to their original Vikunja tasks.
 - Synchronize titles, Markdown notes, completion state, and due dates in both directions.
-- Create Vikunja tasks from Super Productivity in a configured default project.
-- Search across all Vikunja projects or a selected set of projects.
-- Optionally preserve selected Vikunja project paths in local Super Productivity project mirrors.
-- Mirror nested project paths locally with a configurable prefix.
-- Pull existing Vikunja labels without creating or pushing labels remotely.
-- Pull-link subtasks when both the parent and child have been imported.
-- Keep Super Productivity time tracking, planning, and focus data local.
+- Create new Vikunja tasks from Super Productivity in a selected Vikunja project.
+- Search all accessible Vikunja projects or select a project subtree.
+- Optionally mirror Vikunja project paths as local Super Productivity projects.
+- Ask before creating missing local project mirrors.
+- Pull existing Vikunja labels without creating or changing labels remotely.
+- Preserve subtask relationships locally when the host API supports the required update.
 
-Vikunja remains the source of truth for remote task-management fields. Local project mirroring and hierarchy synchronization are pull-only: the plugin does not create, rename, move, or delete Vikunja projects.
+Vikunja is the source of truth for remote task fields. Project mirroring is
+pull-only: the plugin does not create, rename, move, or delete projects in
+Vikunja.
 
 ## Requirements
 
 - Super Productivity 18.19.0 or newer.
 - A Vikunja server with REST API v2 enabled.
-- A Vikunja API token with access to the projects and tasks you want to use.
+- A Vikunja API token that can access the projects and tasks you want to use.
 
-Use an HTTPS Vikunja URL for normal use. Local HTTP servers require the host's private-network plugin policy to permit access.
+Use an HTTPS Vikunja URL for normal use. Local HTTP servers require the
+Super Productivity host's private-network policy to allow the connection.
 
-## Install
+## Installation
 
-Build the self-contained plugin package:
+### Build from source
 
 ```bash
-npm install
+npm ci
+npm test
+npm run typecheck
 npm run package
 ```
 
-In Super Productivity, open `Settings → Plugins → Choose Plugin File` and select:
+The installable archive is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.3.13.zip
+dist/vikunja-super-productivity-plugin-0.3.14.zip
 ```
 
-The archive contains the root-level `manifest.json`, `icon.svg`, and `plugin.js` files.
-The plugin card and issue panel use the bundled monochrome Vikunja SVG, and the
-`Connect Vikunja` button uses the built-in `settings` icon.
+The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
 
-## Configure
+### Install in Super Productivity
 
-1. Open `Settings → Plugins`, select the Vikunja plugin, and use its plugin-card
-   Settings action to open the token dialog. The top-bar `Connect Vikunja` button
-   remains available as a quick shortcut.
-2. Enter the Vikunja base URL in the issue-provider configuration.
-3. Choose the Vikunja projects to import/search, or leave the selector empty for all accessible tasks.
-4. Choose the default Vikunja project for tasks created from Super Productivity.
-5. Set the local project prefix. Leave blank for no prefix, or enter `Vikunja · ` if you want a prefix.
-6. Expand `Advanced Config` in the provider edit screen. First set
-   `Default Super Productivity Project`; then enable `Auto import to default
-   project (requires a default project)` if it is not already selected. Vikunja
-   0.3.13 preselects this native Super Productivity option only when a new
-   provider is created; existing Vikunja providers must be edited once.
-   If a connection is attempted before a token is configured, this dialog opens automatically.
+1. Open `Settings → Plugins → Choose Plugin File`.
+2. Select `vikunja-super-productivity-plugin-0.3.14.zip`.
+3. Enable the Vikunja issue provider if it is not enabled automatically.
+4. Configure the provider using the steps below.
 
-### Import all Vikunja tasks
+## Configuration
 
-To import every active task, leave `Vikunja projects to import/search` empty
-and enable `Auto import to default project (requires a default project)` under
-`Advanced Config`. (Older Super Productivity versions may call this `Auto-add to
-backlog`.) Super Productivity then calls the provider's bulk callback
-with an empty search term, follows Vikunja pagination, and imports only remote
-tasks that are not already linked locally. Completed tasks and tasks in archived
-Vikunja projects are excluded from automatic import. To import only selected projects, choose their numeric IDs in `Vikunja projects to import/search` first. Selecting a parent project includes all of its descendants. Enable
-`Poll imported for changes and notify` and choose the desired `Polling trigger`
-(`always` is the most predictable first-import setting). The host then runs the
-bulk import during its normal provider polling cycle.
+1. Open `Settings → Plugins`, select Vikunja, and use the plugin card's
+   Settings action to open the token dialog. The token is stored in local
+   Super Productivity secret storage. It is not part of provider configuration,
+   sync data, source files, or the plugin archive.
+2. Set `Vikunja base URL`. Enter the server URL without `/api/v2`; the plugin
+   adds that path itself.
+3. Choose the Vikunja projects to search/import, or leave the selector empty
+   for all accessible projects.
+4. Set `Default project for new tasks` if tasks created from Super Productivity
+   should be sent to Vikunja.
+5. Set `Local project prefix`, or leave it blank for no prefix.
+6. Enable `Preserve Vikunja project structure locally` if imported tasks should
+   be routed to local mirrors named from their Vikunja paths.
+7. In `Advanced Config`, choose `Default Super Productivity Project` as the
+   temporary staging project used by the host's bulk importer.
+8. Enable `Auto import to default project (requires a default project)` to
+   enable automatic import. Older Super Productivity versions may call this
+   `Auto-add to backlog`.
+9. Enable `Poll imported for changes and notify` and select an appropriate
+   `Polling trigger`. `always` is the most predictable option for an initial
+   import.
 
-Enable `Preserve Vikunja project structure locally` to create local project
-mirrors and assign imported tasks to them. Super Productivity's plugin API does
-not currently expose parent-project creation, so a nested Vikunja path is kept as
-a stable flat name such as `Parent / Child`; the remote project hierarchy is not
-modified. Local project mappings are stored separately on this computer, so
-Vikunja IDs do not appear in project names. The 0.3.13 build asks before creating missing local mirror projects; choosing
-Skip leaves those imported tasks in the configured default local project.
-Choosing `Skip` is remembered locally for each missing Vikunja project and
-server, so the same prompt does not reappear during normal polling. A newly
-missing project still gets its own prompt. If you later create the matching
-local mirror manually, its project name is detected and routing resumes.
-Use `Reset Vikunja project prompt decisions` in the top bar if you want to review a skipped project again.
-If tasks were imported before routing was available, or if startup happened before the task list finished loading, use the `Repair Vikunja projects` action in the Super Productivity top bar after the app is ready. It rechecks stored destination metadata and moves existing linked tasks without re-importing them.
+## Usage
 
-The native importer may briefly create a task in the configured default local
-project. The plugin records the remote task-to-mirror mapping during discovery
-and immediately moves the task after the host's `taskCreated` event, including
-when the host omits the provider-specific sync metadata.
+### Import a single task
 
-This is a linked issue import, not a one-way copy: imported tasks retain their
-Vikunja issue identity and the configured title, notes, completion, and due-date
-field synchronization. The plugin does not delete local tasks or remote Vikunja
-tasks during the import.
+1. Open the Super Productivity issue panel and select `Vikunja`.
+2. Search by task title and select the matching Vikunja result.
+3. Use the normal Super Productivity import action to add the task.
+4. If project mirroring is enabled, the plugin routes the task to its matching local mirror after import.
 
-The token is stored in Super Productivity's local secret storage. It is not part of synced provider configuration, source files, environment files, logs, or the plugin archive. Never paste a production token into a source file or commit.
+### Import all active tasks
+
+Leave `Vikunja projects to import/search` empty and enable the automatic import
+option under `Advanced Config`. Super Productivity then asks this provider for
+all matching unlinked tasks. Completed tasks and tasks in archived Vikunja
+projects are excluded from automatic import.
+
+The host may briefly place imported tasks in the configured staging project.
+When project mirroring is enabled, the plugin records each task's destination
+and moves it to the matching local mirror after import. If a mirror is missing,
+the plugin asks whether to create it. Choosing `Skip` leaves those tasks in the
+staging project and remembers that decision for that Vikunja server/project.
+
+Use the following maintenance actions when needed. They are available from
+Super Productivity's plugin menu:
+
+- `Repair Vikunja projects` rechecks existing imported tasks and moves tasks to
+  known matching mirrors.
+- `Reset Vikunja project prompt decisions` allows previously skipped missing
+  projects to prompt again.
+
+Selecting a parent Vikunja project includes its descendants. Because the public
+Super Productivity plugin API does not expose parent-project creation, nested
+paths are represented as stable flat local names such as `Parent / Child`.
+
+### Create a new Vikunja task
+
+Set `Default project for new tasks` to the remote Vikunja project that should receive new tasks. Then use the normal Super Productivity create-task or issue-provider flow while Vikunja is selected. The task is created remotely in that project; local project mirroring remains pull-only.
+
+### Update and sync tasks
+
+After import, edit the task normally in either application. Titles, Markdown notes, completion state, and due dates are synchronized in both directions during the host synchronization cycle. Local project placement, Super Productivity time tracking, planning, and focus data remain local to Super Productivity.
+
+### Update the plugin or move to another computer
+
+For an in-place plugin update, install the newer ZIP and reload Super Productivity. Existing linked tasks, provider configuration, local project mappings, and time tracking belong to the Super Productivity profile and are not stored in the plugin ZIP. On a new computer, migrate or import the Super Productivity data separately, then enter the Vikunja token again through the plugin card Settings action.
+
+### Troubleshooting
+
+- Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then run `Repair Vikunja projects` from the plugin menu.
+- A project prompt was skipped: run `Reset Vikunja project prompt decisions`, then search or import again.
+- Connection or backlog import errors: verify the base URL, token, project filter, and the host network permission. Do not append `/api/v2` to the configured base URL.
+
+## Plugin settings, menu actions, and icons
+
+Connection setup is available through the Vikunja plugin card's Settings action
+under `Settings → Plugins`. The plugin does not add a permanent Connect button
+to Super Productivity's main top bar.
+
+The maintenance actions are registered in the plugin menu:
+
+- `Repair Vikunja projects` uses the built-in `account_tree` icon.
+- `Reset Vikunja project prompt decisions` uses the built-in `refresh` icon.
+
+Super Productivity renders these menu icons through the same Material icon system
+as built-in actions. The plugin card and issue-panel provider use the bundled
+monochrome Vikunja SVG. The host's plugin API does not provide a separate
+plugin-specific icon namespace or a direct custom SVG slot for menu actions.
+
+Standard Super Productivity examples commonly use a side-panel entry or
+keyboard shortcut rather than a persistent header button. Header buttons remain
+available through the API for plugins that need frequent one-click actions. See
+the [official plugin development guide](https://github.com/super-productivity/super-productivity/blob/master/docs/plugin-development.md)
+and the [official example plugins](https://github.com/super-productivity/super-productivity/tree/master/packages/plugin-dev).
 
 ## Synchronization behavior
 
-Remote task identity is based on the normalized Vikunja URL and numeric task ID. Changing the configured server creates a separate provider identity; existing links are not silently rebound.
+- Titles, Markdown notes, completion state, and due dates synchronize in both
+  directions.
+- Existing Vikunja labels can be pulled, but labels are not created or attached
+  remotely.
+- Project mirroring and local project assignment are pull-only.
+- Deleting a local task never deletes the Vikunja task. Remote task deletion is
+  not exposed by this provider.
+- Subtasks are linked locally only after both tasks have been imported, and no
+  placeholder local tasks are created. Verify subtask behavior on the target host
+  version.
+- Changing the Vikunja base URL creates a separate provider identity; existing
+  links are not silently rebound to another server.
+- Network failures during task creation are treated as uncertain and require
+  reconciliation before retrying, to avoid accidental duplicate tasks.
 
-The plugin synchronizes task fields conservatively:
+## Security and data safety
 
-- Title, notes, completion, and due dates support pull and push synchronization.
-- Existing labels can be pulled, but labels are not automatically created or attached remotely.
-- Local mirrored project names include the full Vikunja path. Remote-to-local project IDs are stored separately on the computer running the plugin.
-- Subtasks are linked locally only after both remote tasks have been imported. The plugin does not create placeholder tasks.
-- Deleting a local task never deletes the Vikunja task. Remote deletion is not exposed by the provider.
-- Remote project changes do not rename or delete local execution data.
-
-Back up your Super Productivity data before enabling a new plugin, and validate the integration with a disposable Vikunja account before connecting a production account.
+Super Productivity host-side plugins are executable code, so install this plugin
+only from a source you trust. Use a least-privilege Vikunja token, prefer HTTPS,
+and never commit a token or production data. Back up Super Productivity data and
+test first with a disposable Vikunja account.
 
 ## Development
 
-Run the automated checks:
+Run the checks from the repository root:
 
 ```bash
 npm test
@@ -126,16 +187,12 @@ npm run build
 npm run package
 ```
 
-The test suite covers API validation, mapping, synchronization, project paths, hierarchy/subtasks, task creation, label pull behavior, native bulk import, deletion safety, reliability, logging redaction, registration, and packaging assumptions.
+The test suite covers API validation, pagination, mapping, field synchronization,
+project paths, project discovery, import routing, hierarchy/subtasks, task
+creation, label behavior, deletion safety, reliability, logging redaction,
+registration, and packaging assumptions.
 
-## Verification status
+## License
 
-Automated tests, production typechecking, bundling, packaging, archive-content checks, host-load smoke checks, and credential-pattern scans pass. The packaged archive contains `manifest.json`, `icon.svg`, and `plugin.js`.
-
-The disposable Vikunja fixture and token were verified directly against the local API. Full live provider verification remains blocked on Super Productivity 18.19.0: its provider configuration rejects requests to both `http://localhost:3456` and `http://127.0.0.1:3456`, although the same endpoint responds successfully outside the app. To complete the live matrix, use a Super Productivity host/profile that permits the manifest's private-network provider access or expose the disposable Vikunja instance through an HTTPS endpoint reachable by the app, then repeat import, hierarchy/subtask, two-way update, restart, offline, and safety checks.
-
-## Safety and support boundaries
-
-The plugin intentionally does not perform remote task deletion, automatic remote label creation, or destructive API operations without an explicit reviewed feature change. Network failures and failed writes should remain recoverable so local changes can be retried.
-
-The current automated checks and clean plugin-load checks are part of the release verification. Before relying on the integration for important production data, also perform a disposable end-to-end check covering import, nested projects, subtasks, task creation, updates in both directions, restart reconciliation, and invalid-credential/offline behavior.
+No license has been declared for this repository yet. Add a license before
+public redistribution.

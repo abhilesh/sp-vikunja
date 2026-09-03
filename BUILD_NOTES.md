@@ -10,7 +10,7 @@ The project builds the Super Productivity plugin:
 
 - Plugin ID: `vikunja-super-productivity-plugin`
 - Display name: `Vikunja`
-- Release version: `0.3.13`
+- Release version: `0.3.14`
 - Minimum Super Productivity version: `18.19.0`
 - Provider type: `issueProvider`
 - Source repository: `git@github.com:abhilesh/sp-vikunja.git`
@@ -18,10 +18,10 @@ The project builds the Super Productivity plugin:
 The installable artifact is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.3.13.zip
+dist/vikunja-super-productivity-plugin-0.3.14.zip
 ```
 
-The root-level manifest field `"icon": "icon.svg"` points the plugin manager to the bundled monochrome Vikunja SVG. The `issueProvider.icon` value is `"plugin-vikunja-super-productivity-plugin-icon"`, the SVG registry name Super Productivity assigns to an uploaded plugin's bundled icon. This makes the plugin card and issue-panel icon use the same monochrome asset. The `Connect Vikunja` header button uses the built-in `settings` icon.
+The root-level manifest field `"icon": "icon.svg"` points the plugin manager to the bundled monochrome Vikunja SVG. The `issueProvider.icon` value is `"plugin-vikunja-super-productivity-plugin-icon"`, the SVG registry name Super Productivity assigns to an uploaded plugin's bundled icon. This makes the plugin card and issue-panel icon use the same monochrome asset. The plugin-card Settings action opens the local token dialog; maintenance actions are registered in the plugin menu with built-in Material icons.
 
 The issue provider also sets `defaultAutoAddToBacklog: true`. This preselects
 Super Productivity's native `Auto import to default project` option when the
@@ -51,14 +51,14 @@ Copy this file from the build computer to the other computer by a USB drive,
 private file transfer, or another trusted method:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.3.13.zip
+dist/vikunja-super-productivity-plugin-0.3.14.zip
 ```
 
 On the other computer:
 
 1. Open Super Productivity.
 2. Go to `Settings → Plugins → Choose Plugin File`.
-3. Select `vikunja-super-productivity-plugin-0.3.13.zip`.
+3. Select `vikunja-super-productivity-plugin-0.3.14.zip`.
 4. Enable/select the Vikunja issue provider if Super Productivity does not do so
    automatically.
 5. Configure the provider and test the connection.
@@ -82,7 +82,7 @@ npm run package
 The resulting file is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.3.13.zip
+dist/vikunja-super-productivity-plugin-0.3.14.zip
 ```
 
 Select that ZIP in Super Productivity using the same `Settings → Plugins → Choose
@@ -98,8 +98,7 @@ Configuration and secrets are local to each Super Productivity installation. Rep
 these steps on every computer:
 
 1. Open `Settings → Plugins`, select the Vikunja plugin, and click the plugin
-   card's Settings action. This opens the local token dialog. The `Connect
-   Vikunja` top-bar button remains as a quick shortcut.
+   card's Settings action. This opens the local token dialog. The plugin does not add a permanent Connect button to the main top bar.
 2. Add/select the `Vikunja` issue provider.
 3. Set `Vikunja base URL` to the server base URL, for example
    `https://vikunja.example`. Do not append `/api/v2`; the plugin adds that API
@@ -121,7 +120,7 @@ these steps on every computer:
    Remote-to-local project IDs are stored separately in local browser storage, so
    IDs do not appear in visible project names. Existing projects using the older
    `[Vikunja:<id>]` suffix are recognized and renamed without the suffix.
-   If a matching local project does not exist, the 0.3.13 build asks whether to
+   If a matching local project does not exist, the 0.3.14 build asks whether to
    create the missing project(s). Choosing Skip leaves those imported tasks in the
    configured default local project.
    Skip is remembered in local browser storage, scoped by Vikunja server and
@@ -134,7 +133,7 @@ these steps on every computer:
    The host's import checkbox is labelled `Auto import to default project
    (requires a default project)` (older versions may call it `Auto-add to
    backlog`). Leave it enabled to import all currently unlinked matching tasks.
-   The 0.3.13 manifest preselects this only for newly-created providers; edit an
+   The 0.3.14 manifest preselects this only for newly-created providers; edit an
    existing provider and enable it manually.
 12. Enable `Poll imported for changes and notify` and choose `Polling trigger`.
    `always` is the most predictable setting for the first bulk import. The host
@@ -276,8 +275,8 @@ Expected results for the current source:
 Useful direct checks after packaging:
 
 ```bash
-unzip -l dist/vikunja-super-productivity-plugin-0.3.13.zip
-unzip -p dist/vikunja-super-productivity-plugin-0.3.13.zip manifest.json
+unzip -l dist/vikunja-super-productivity-plugin-0.3.14.zip
+unzip -p dist/vikunja-super-productivity-plugin-0.3.14.zip manifest.json
 ```
 
 Do not commit `node_modules/` or `dist/`. The source of truth for rebuilding is the
@@ -303,14 +302,10 @@ docker logs --tail 100 vikunja-test
 
 ## 8. Current commit and release state
 
-At the time these notes were written:
+At the time these notes were updated:
 
-- `main` is at commit `837c8f3` (`docs: record release verification status`).
-- `main` matches `origin/main`; there is no ahead/behind source divergence.
-- The 0.3.13 bulk-import, plugin-card token-settings, and issue-panel icon fixes,
-  plus icon/packaging
-  updates, and these refreshed notes are currently uncommitted and should be
-  included in the next release commit.
+- The last committed baseline is `c86230b` (`Improve Vikunja project mirroring and task routing`).
+- The 0.3.14 settings/menu migration, version bump, README, and refreshed notes are currently uncommitted.
 - `dist/` is ignored, so the installable ZIP is not committed or transferred by a
   normal clone.
 - `vikunja-test/README.md` is currently untracked. It is useful development
@@ -329,9 +324,10 @@ release validation rather than a known implementation defect:
 1. Obtain a Super Productivity host/profile that permits the manifest's private
    network access, or expose the disposable Vikunja instance through an HTTPS
    endpoint reachable by Super Productivity.
-2. Install the 0.3.13 ZIP into that host.
+2. Install the 0.3.14 ZIP into that host.
 3. Run the live matrix with disposable data:
    - plugin-card token setup, connection test, and invalid-token behavior;
+   - plugin-card Settings token setup; confirm no Connect action appears in the main top bar and Repair/Reset appear in the plugin menu;
    - bulk import with an empty project filter, selected-project filtering, and
      repeat-poll deduplication;
    - search/import and project filtering;

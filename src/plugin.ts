@@ -1206,14 +1206,8 @@ function registerVikunjaTokenAccess(api: PluginAPI): void {
   };
 
   // Super Productivity renders this handler as the settings action on the
-  // plugin card. Keep the header shortcut too for hosts that expose it.
+  // plugin card. Keep connection setup out of the persistent main top bar.
   api.registerConfigHandler?.(openTokenDialog);
-
-  api.registerHeaderButton?.({
-    label: 'Connect Vikunja',
-    icon: 'settings',
-    onClick: openTokenDialog
-  });
 }
 
 
@@ -1526,8 +1520,8 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     runStartupRepair();
   }
 
-  if (api.getTasks && api.registerHeaderButton) {
-    api.registerHeaderButton({
+  if (api.getTasks && api.registerMenuEntry) {
+    api.registerMenuEntry({
       label: 'Repair Vikunja projects',
       icon: 'account_tree',
       onClick: () => {
@@ -1550,7 +1544,7 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
           });
       }
     });
-    api.registerHeaderButton({
+    api.registerMenuEntry({
       label: 'Reset Vikunja project prompt decisions',
       icon: 'refresh',
       onClick: () => {

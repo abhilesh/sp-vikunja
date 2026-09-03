@@ -134,20 +134,17 @@ it('registers when the host runner injects PluginAPI as a function parameter', a
   expect(registerCalls).toBe(1);
 });
 
-it('exposes a local secret-backed token setup button when dialog APIs are available', async () => {
+it('exposes local secret-backed token setup through plugin settings', async () => {
   const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
   const api = createPluginApiStub();
   api.getSecret = vi.fn(async () => 'configured-token');
-  let headerButton: { label: string; icon?: string; onClick: () => void } | undefined;
   let configHandler: (() => void) | undefined;
   let dialog: PluginDialogConfig | undefined;
 
   api.registerConfigHandler = (handler) => {
     configHandler = handler;
   };
-  api.registerHeaderButton = (button) => {
-    headerButton = button;
-  };
+  api.registerHeaderButton = vi.fn();
   api.openDialog = async (config) => {
     dialog = config;
   };
@@ -157,8 +154,7 @@ it('exposes a local secret-backed token setup button when dialog APIs are availa
   await vi.waitFor(() => expect(dialog).toBeDefined());
 
   expect(configHandler).toEqual(expect.any(Function));
-  expect(headerButton?.label).toBe('Connect Vikunja');
-  expect(headerButton?.icon).toBe('settings');
+  expect(api.registerHeaderButton).not.toHaveBeenCalled();
   expect(dialog?.htmlContent).toContain('type="password"');
   expect(dialog?.htmlContent).toContain('Token status:</strong> Configured on this computer.');
   expect(dialog?.htmlContent).toContain('Stored locally in Super Productivity secret storage');
@@ -251,6 +247,7 @@ it('preserves the PluginAPI receiver while repairing existing tasks', async () =
 
   const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
   const api = createPluginApiStub();
+  const menuLabels: string[] = [];
   let repairHandler: (() => void) | undefined;
   const showSnack = vi.fn();
   const updateTask = function (this: PluginAPI, taskId: string, updates: { projectId?: string | null }) {
@@ -274,7 +271,9 @@ it('preserves the PluginAPI receiver while repairing existing tasks', async () =
   api.registerHook = () => undefined;
   api.updateTask = updateTask;
   api.showSnack = showSnack;
-  api.registerHeaderButton = (button) => {
+  api.registerHeaderButton = vi.fn();
+  api.registerMenuEntry = (button) => {
+    menuLabels.push(button.label);
     if (button.label === 'Repair Vikunja projects') {
       repairHandler = button.onClick;
     }
@@ -285,6 +284,11 @@ it('preserves the PluginAPI receiver while repairing existing tasks', async () =
 
   await vi.waitFor(() => expect(api.getTasks).toHaveBeenCalledTimes(2));
   await vi.waitFor(() => expect(showSnack).toHaveBeenCalled());
+  expect(menuLabels).toEqual([
+    'Repair Vikunja projects',
+    'Reset Vikunja project prompt decisions',
+  ]);
+  expect(api.registerHeaderButton).not.toHaveBeenCalled();
   expect(showSnack).toHaveBeenCalledWith(expect.objectContaining({ msg: expect.stringContaining('Moved 1') }));
 });
 
