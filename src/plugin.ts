@@ -1150,9 +1150,11 @@ async function saveVikunjaTokenFromDialog(api: VikunjaPluginHost): Promise<void>
   api.showSnack?.({
     msg: 'Vikunja API token stored in local secret storage.',
     type: 'SUCCESS',
-    ico: 'lock'
+    ico: 'key'
   });
 }
+
+let repairVikunjaProjects: (() => Promise<number>) | undefined;
 
 function createVikunjaTokenDialog(
   api: VikunjaPluginHost,
@@ -1161,6 +1163,7 @@ function createVikunjaTokenDialog(
   const tokenStatus = tokenConfigured
     ? 'Configured on this computer.'
     : 'Not configured on this computer.';
+  const repair = repairVikunjaProjects;
 
   return {
     htmlContent: `
@@ -1172,9 +1175,46 @@ function createVikunjaTokenDialog(
     buttons: [
       {
         label: tokenConfigured ? 'Replace token' : 'Save token',
-        icon: 'save',
+        icon: 'key',
         onClick: () => saveVikunjaTokenFromDialog(api)
-      }
+      },
+      ...(repair ? [
+        {
+          label: 'Repair Vikunja projects',
+          icon: 'account_tree',
+          onClick: async () => {
+            try {
+              const movedCount = await repair();
+              api.showSnack?.({
+                msg: movedCount > 0
+                  ? `Moved ${movedCount} imported Vikunja task${movedCount === 1 ? '' : 's'} to the matching projects.`
+                  : 'No imported Vikunja tasks need project repair.',
+                type: 'SUCCESS',
+                ico: 'account_tree'
+              });
+            } catch {
+              api.showSnack?.({
+                msg: 'Could not repair imported Vikunja projects. Try again after Super Productivity finishes loading.',
+                type: 'ERROR',
+                ico: 'warning'
+              });
+            }
+          }
+        },
+        {
+          label: 'Reset Vikunja project prompt decisions',
+          icon: 'refresh',
+          onClick: () => {
+            vikunjaSkippedProjectKeys.clear();
+            persistSkippedVikunjaProjectKeys(vikunjaSkippedProjectKeys);
+            api.showSnack?.({
+              msg: 'Vikunja project prompt decisions were reset. Run a search or import again to review missing projects.',
+              type: 'INFO',
+              ico: 'refresh'
+            });
+          }
+        }
+      ] : [])
     ]
   };
 }
@@ -1462,6 +1502,7 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     }
     return movedCount;
   };
+  repairVikunjaProjects = reconcileExistingTaskProjects;
 
   let lastReconciledTaskCount = 0;
   const startupRetryTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -1491,6 +1532,7 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
       clearTimeout(timer);
     }
     startupRetryTimers.clear();
+    repairVikunjaProjects = undefined;
   });
 
   const runStartupRepair = (): void => {
@@ -1520,44 +1562,6 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     runStartupRepair();
   }
 
-  if (api.getTasks && api.registerMenuEntry) {
-    api.registerMenuEntry({
-      label: 'Repair Vikunja projects',
-      icon: 'account_tree',
-      onClick: () => {
-        void reconcileExistingTaskProjects()
-          .then((movedCount) => {
-            api.showSnack?.({
-              msg: movedCount > 0
-                ? `Moved ${movedCount} imported Vikunja task${movedCount === 1 ? '' : 's'} to the matching projects.`
-                : 'No imported Vikunja tasks need project repair.',
-              type: 'SUCCESS',
-              ico: 'account_tree'
-            });
-          })
-          .catch(() => {
-            api.showSnack?.({
-              msg: 'Could not repair imported Vikunja projects. Try again after Super Productivity finishes loading.',
-              type: 'ERROR',
-              ico: 'warning'
-            });
-          });
-      }
-    });
-    api.registerMenuEntry({
-      label: 'Reset Vikunja project prompt decisions',
-      icon: 'refresh',
-      onClick: () => {
-        vikunjaSkippedProjectKeys.clear();
-        persistSkippedVikunjaProjectKeys(vikunjaSkippedProjectKeys);
-        api.showSnack?.({
-          msg: 'Vikunja project prompt decisions were reset. Run a search or import again to review missing projects.',
-          type: 'INFO',
-          ico: 'refresh'
-        });
-      }
-    });
-  }
 }
 function getHostPluginAPI(): PluginAPI | undefined {
   const globalApi = (globalThis as typeof globalThis & HostPluginGlobal).PluginAPI;

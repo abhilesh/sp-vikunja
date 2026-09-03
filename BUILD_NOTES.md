@@ -21,7 +21,7 @@ The installable artifact is:
 dist/vikunja-super-productivity-plugin-0.3.14.zip
 ```
 
-The root-level manifest field `"icon": "icon.svg"` points the plugin manager to the bundled monochrome Vikunja SVG. The `issueProvider.icon` value is `"plugin-vikunja-super-productivity-plugin-icon"`, the SVG registry name Super Productivity assigns to an uploaded plugin's bundled icon. This makes the plugin card and issue-panel icon use the same monochrome asset. The plugin-card Settings action opens the local token dialog; maintenance actions are registered in the plugin menu with built-in Material icons.
+The root-level manifest field `"icon": "icon.svg"` points the plugin manager to the bundled monochrome Vikunja SVG. The `issueProvider.icon` value is `"plugin-vikunja-super-productivity-plugin-icon"`, the SVG registry name Super Productivity assigns to an uploaded plugin's bundled icon. This makes the plugin card and issue-panel icon use the same monochrome asset. The plugin-card Settings action opens the local token dialog; the Settings dialog contains the Repair and Reset maintenance actions; the token dialog uses the built-in key icon for Save/Replace and success notification.
 
 The issue provider also sets `defaultAutoAddToBacklog: true`. This preselects
 Super Productivity's native `Auto import to default project` option when the
@@ -304,8 +304,8 @@ docker logs --tail 100 vikunja-test
 
 At the time these notes were updated:
 
-- The last committed baseline is `c86230b` (`Improve Vikunja project mirroring and task routing`).
-- The 0.3.14 settings/menu migration, version bump, README, and refreshed notes are currently uncommitted.
+- The current `0.3.14` release baseline is `97bccfb` (`release: prepare Vikunja plugin 0.3.14`).
+- The Settings-dialog maintenance-action move, README, and refreshed notes are currently uncommitted on top of that release commit.
 - `dist/` is ignored, so the installable ZIP is not committed or transferred by a
   normal clone.
 - `vikunja-test/README.md` is currently untracked. It is useful development
@@ -327,7 +327,7 @@ release validation rather than a known implementation defect:
 2. Install the 0.3.14 ZIP into that host.
 3. Run the live matrix with disposable data:
    - plugin-card token setup, connection test, and invalid-token behavior;
-   - plugin-card Settings token setup; confirm no Connect action appears in the main top bar and Repair/Reset appear in the plugin menu;
+   - plugin-card Settings token setup; confirm no Connect action appears in the main top bar and Repair/Reset appear in the Vikunja Settings dialog;
    - bulk import with an empty project filter, selected-project filtering, and
      repeat-poll deduplication;
    - search/import and project filtering;

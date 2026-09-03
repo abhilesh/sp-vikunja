@@ -100,8 +100,8 @@ and moves it to the matching local mirror after import. If a mirror is missing,
 the plugin asks whether to create it. Choosing `Skip` leaves those tasks in the
 staging project and remembers that decision for that Vikunja server/project.
 
-Use the following maintenance actions when needed. They are available from
-Super Productivity's plugin menu:
+Use the following maintenance actions when needed. Open `Settings → Plugins`,
+select Vikunja, and click the plugin card's Settings action:
 
 - `Repair Vikunja projects` rechecks existing imported tasks and moves tasks to
   known matching mirrors.
@@ -126,25 +126,27 @@ For an in-place plugin update, install the newer ZIP and reload Super Productivi
 
 ### Troubleshooting
 
-- Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then run `Repair Vikunja projects` from the plugin menu.
-- A project prompt was skipped: run `Reset Vikunja project prompt decisions`, then search or import again.
+- Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then open Vikunja Settings and click `Repair Vikunja projects`.
+- A project prompt was skipped: open Vikunja Settings and click `Reset Vikunja project prompt decisions`, then search or import again.
 - Connection or backlog import errors: verify the base URL, token, project filter, and the host network permission. Do not append `/api/v2` to the configured base URL.
 
-## Plugin settings, menu actions, and icons
+## Plugin settings, maintenance actions, and icons
 
 Connection setup is available through the Vikunja plugin card's Settings action
 under `Settings → Plugins`. The plugin does not add a permanent Connect button
 to Super Productivity's main top bar.
 
-The maintenance actions are registered in the plugin menu:
+The Settings icon on the plugin card is supplied by Super Productivity and
+cannot be replaced by this plugin.
 
+The Vikunja Settings dialog includes:
+
+- `Save token` / `Replace token` uses the built-in `key` icon.
 - `Repair Vikunja projects` uses the built-in `account_tree` icon.
 - `Reset Vikunja project prompt decisions` uses the built-in `refresh` icon.
 
-Super Productivity renders these menu icons through the same Material icon system
-as built-in actions. The plugin card and issue-panel provider use the bundled
-monochrome Vikunja SVG. The host's plugin API does not provide a separate
-plugin-specific icon namespace or a direct custom SVG slot for menu actions.
+The bundled monochrome Vikunja SVG is used for the plugin card and issue-panel
+provider.
 
 Standard Super Productivity examples commonly use a side-panel entry or
 keyboard shortcut rather than a persistent header button. Header buttons remain
