@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import type { PluginDialogConfig } from '../src/vikunja/types.js';
 
 import { buildVikunjaIssueProviderDefinition } from '../src/plugin.js';
 import type { IssueProviderHttp, IssueProviderHttpOptions } from '../src/vikunja/types.js';
@@ -76,6 +77,60 @@ it('searches all projects when no project filter is configured', async () => {
   ).resolves.toHaveLength(2);
 });
 
+it('exposes all matching tasks to the native backlog importer', async () => {
+  const http = createHttpStub();
+  vi.mocked(http.get).mockResolvedValue(taskEnvelope([
+    { id: 1, title: 'One', project_id: 2, done: false },
+    { id: 2, title: 'Two', project_id: 7, done: true },
+  ]));
+  const definition = buildVikunjaIssueProviderDefinition({
+    getSecret: vi.fn(async () => 'synthetic-token')
+  } as never);
+
+  await expect(
+    definition.getNewIssuesForBacklog?.({
+      baseUrl: 'https://vikunja.example/',
+      projectIds: ['2'],
+    }, http),
+  ).resolves.toMatchObject([{ id: '1', title: 'One' }]);
+
+  expect(http.get).toHaveBeenCalledWith(
+    'https://vikunja.example/api/v2/tasks?q=&page=1&per_page=1000&format=markdown&expand=subtasks',
+    expect.objectContaining({
+      headers: { Authorization: 'Bearer synthetic-token' },
+    }),
+  );
+});
+
+it('skips completed tasks and archived projects during automatic import', async () => {
+  const http = createHttpStub();
+  vi.mocked(http.get).mockImplementation(async (url) => {
+    if (url.includes('/api/v2/projects')) {
+      return projectEnvelope([
+        { id: 2, title: 'Active', is_archived: false },
+        { id: 8, title: 'Archived', is_archived: true },
+      ]);
+    }
+
+    return taskEnvelope([
+      { id: 1, title: 'Open task', project_id: 2, done: false },
+      { id: 2, title: 'Completed task', project_id: 2, done: true },
+      { id: 3, title: 'Archived-project task', project_id: 8, done: false },
+      { id: 4, title: 'Other open task', project_id: 9, done: false },
+    ]);
+  });
+  const definition = buildVikunjaIssueProviderDefinition({
+    getSecret: vi.fn(async () => 'synthetic-token')
+  } as never);
+
+  await expect(
+    definition.getNewIssuesForBacklog?.({ baseUrl: 'https://vikunja.example/' }, http),
+  ).resolves.toMatchObject([
+    { id: '1', title: 'Open task' },
+    { id: '4', title: 'Other open task' },
+  ]);
+});
+
 it('rejects malformed project filters before making a task request', async () => {
   const http = createHttpStub();
   const definition = buildVikunjaIssueProviderDefinition({
@@ -130,9 +185,95 @@ it('mirrors selected Vikunja projects locally and attaches imported tasks to the
       superProductivityProjectId: 'local-research',
     },
   ]);
-  expect(addedProjects).toEqual([{ title: 'Vikunja · Research [Vikunja:2]' }]);
+  expect(addedProjects).toEqual([{ title: 'Research' }]);
   expect(host.getAllProjects).toHaveBeenCalledOnce();
 });
+it('prompts before creating missing local project mirrors', async () => {
+  const http = createHttpStub();
+  vi.mocked(http.get).mockImplementation(async (url) => {
+    if (url.includes('/api/v2/projects')) {
+      return projectEnvelope([{ id: 2, title: 'Research', is_archived: false }]);
+    }
+
+    return taskEnvelope([{ id: 42, title: 'Imported task', project_id: 2, done: false }]);
+  });
+  const addedProjects: Array<{ title: string }> = [];
+  const dialogs: PluginDialogConfig[] = [];
+  const host = {
+    getSecret: vi.fn(async () => 'synthetic-token'),
+    setSecret: vi.fn(async () => undefined),
+    deleteSecret: vi.fn(async () => undefined),
+    getAllProjects: vi.fn(async () => []),
+    addProject: vi.fn(async (projectData: { title: string }) => {
+      addedProjects.push(projectData);
+      return 'local-research';
+    }),
+    updateProject: vi.fn(async () => undefined),
+    openDialog: vi.fn(async (config: PluginDialogConfig) => {
+      dialogs.push(config);
+      await config.buttons?.[0]?.onClick();
+    }),
+  };
+  const definition = buildVikunjaIssueProviderDefinition(host);
+
+  await expect(
+    definition.searchIssues('imported', {
+      baseUrl: 'https://vikunja.example/',
+      projectIds: ['2'],
+      syncProjects: true,
+    }, http),
+  ).resolves.toMatchObject([
+    {
+      id: '42',
+      superProductivityProjectId: 'local-research',
+    },
+  ]);
+
+  expect(dialogs).toHaveLength(1);
+  expect(dialogs[0]?.htmlContent).toContain('Missing local Vikunja projects');
+  expect(dialogs[0]?.htmlContent).toContain('Research');
+  expect(addedProjects).toEqual([{ title: 'Research' }]);
+});
+
+it('remembers Skip for a missing project instead of prompting on every sync', async () => {
+  const http = createHttpStub();
+  vi.mocked(http.get).mockImplementation(async (url) => {
+    if (url.includes('/api/v2/projects')) {
+      return projectEnvelope([{ id: 2, title: 'Research', is_archived: false }]);
+    }
+
+    return taskEnvelope([{ id: 42, title: 'Imported task', project_id: 2, done: false }]);
+  });
+  const dialogs: PluginDialogConfig[] = [];
+  const host = {
+    getSecret: vi.fn(async () => 'synthetic-token'),
+    setSecret: vi.fn(async () => undefined),
+    deleteSecret: vi.fn(async () => undefined),
+    getAllProjects: vi.fn(async () => []),
+    addProject: vi.fn(async () => 'unexpected-new-project'),
+    updateProject: vi.fn(async () => undefined),
+    openDialog: vi.fn(async (config: PluginDialogConfig) => {
+      dialogs.push(config);
+      await config.buttons?.[1]?.onClick();
+    }),
+  };
+  const definition = buildVikunjaIssueProviderDefinition(host);
+
+  await definition.searchIssues('imported', {
+    baseUrl: 'https://skip.vikunja.example/',
+    projectIds: ['2'],
+    syncProjects: true,
+  }, http);
+  await definition.searchIssues('imported', {
+    baseUrl: 'https://skip.vikunja.example/',
+    projectIds: ['2'],
+    syncProjects: true,
+  }, http);
+
+  expect(dialogs).toHaveLength(1);
+  expect(host.addProject).not.toHaveBeenCalled();
+});
+
 
 it('renames an existing local mirror when a Vikunja project is renamed', async () => {
   const http = createHttpStub();
@@ -160,7 +301,7 @@ it('renames an existing local mirror when a Vikunja project is renamed', async (
   }, http);
 
   expect(host.addProject).not.toHaveBeenCalled();
-  expect(updateProject).toHaveBeenCalledWith('local-research', { title: 'Vikunja · Research [Vikunja:2]' });
+  expect(updateProject).toHaveBeenCalledWith('local-research', { title: 'Research' });
 });
 
 it('mirrors nested projects with a literal configurable prefix and full path', async () => {
@@ -207,8 +348,79 @@ it('mirrors nested projects with a literal configurable prefix and full path', a
   ]);
 
   expect(addedProjects).toEqual([
-    { title: 'Work: Parent / Child [Vikunja:2]' },
+    { title: 'Work: Parent / Child' },
   ]);
+});
+
+it('includes all descendants when a parent project is selected', async () => {
+  const http = createHttpStub();
+  vi.mocked(http.get).mockImplementation(async (url) => {
+    if (url.includes('/api/v2/projects')) {
+      return projectEnvelope([
+        { id: 1, title: 'Parent', parent_project_id: null, is_archived: false },
+        { id: 2, title: 'Child', parent_project_id: 1, is_archived: false },
+        { id: 3, title: 'Grandchild', parent_project_id: 2, is_archived: false },
+      ]);
+    }
+
+    return taskEnvelope([
+      { id: 42, title: 'Nested task', project_id: 3, done: false },
+    ]);
+  });
+  const addedProjects: Array<{ title: string }> = [];
+  const host = {
+    getSecret: vi.fn(async () => 'synthetic-token'),
+    setSecret: vi.fn(async () => undefined),
+    deleteSecret: vi.fn(async () => undefined),
+    getAllProjects: vi.fn(async () => []),
+    addProject: vi.fn(async (projectData: { title: string }) => {
+      addedProjects.push(projectData);
+      return 'local-' + addedProjects.length;
+    }),
+    updateProject: vi.fn(async () => undefined),
+  };
+  const definition = buildVikunjaIssueProviderDefinition(host);
+
+  await expect(
+    definition.searchIssues('nested', {
+      baseUrl: 'https://vikunja.example/',
+      projectIds: ['1'],
+      syncProjects: true,
+    }, http),
+  ).resolves.toMatchObject([
+    {
+      id: '42',
+      projectId: '3',
+      projectTitle: 'Parent / Child / Grandchild',
+      superProductivityProjectId: 'local-3',
+    },
+  ]);
+
+  expect(addedProjects).toEqual([
+    { title: 'Parent' },
+    { title: 'Parent / Child' },
+    { title: 'Parent / Child / Grandchild' },
+  ]);
+});
+
+it('preserves the local mirror project ID for post-import routing', () => {
+  const definition = buildVikunjaIssueProviderDefinition({
+    getSecret: vi.fn(async () => 'synthetic-token')
+  } as never);
+
+  expect(definition.extractSyncValues?.({
+    superProductivityProjectId: 'local-child',
+    vikunjaRelationsLoaded: true,
+    vikunjaParentTaskId: '42',
+    vikunjaParentTaskAmbiguous: false,
+    vikunjaSubtaskTaskIds: ['43']
+  })).toEqual({
+    superProductivityProjectId: 'local-child',
+    vikunjaRelationsLoaded: true,
+    vikunjaParentTaskId: '42',
+    vikunjaParentTaskAmbiguous: false,
+    vikunjaSubtaskTaskIds: ['43']
+  });
 });
 
 

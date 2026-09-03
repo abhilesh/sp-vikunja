@@ -1,11 +1,12 @@
 {
   "id": "vikunja-super-productivity-plugin",
   "name": "Vikunja",
-  "version": "0.2.0",
+  "version": "0.3.13",
   "description": "Super Productivity issue provider for Vikunja",
   "manifestVersion": 1,
   "minSupVersion": "18.19.0",
   "type": "issueProvider",
+  "icon": "icon.svg",
   "permissions": [
     "http",
     "updateTask",
@@ -17,13 +18,15 @@
     "showSnack"
   ],
   "hooks": [
+    "taskCreated",
     "taskUpdate"
   ],
   "iFrame": false,
   "issueProvider": {
     "allowPrivateNetwork": true,
     "pollIntervalMs": 600000,
-    "icon": "open_project",
+    "defaultAutoAddToBacklog": true,
+    "icon": "plugin-vikunja-super-productivity-plugin-icon",
     "humanReadableName": "Vikunja",
     "issueStrings": {
       "singular": "Task",

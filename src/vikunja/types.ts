@@ -15,6 +15,8 @@ export interface VikunjaTaskSummary {
   labelIds?: string[];
   description?: string;
   projectId?: string;
+  /** Remote project ID retained in sync metadata for post-import repair. */
+  vikunjaProjectId?: string;
   priority?: number;
   dueDate?: string;
   lastUpdated?: number;
@@ -142,6 +144,10 @@ export interface IssueProviderDefinition {
     config: Record<string, unknown>,
     http: IssueProviderHttp,
   ): Promise<VikunjaTaskSummary[]>;
+  getNewIssuesForBacklog?(
+    config: Record<string, unknown>,
+    http: IssueProviderHttp,
+  ): Promise<VikunjaTaskSummary[]>;
   getById(
     issueId: string,
     config: Record<string, unknown>,
@@ -206,12 +212,19 @@ export interface PluginAPI {
   setSecret(key: string, value: string): Promise<void>;
   deleteSecret(key: string): Promise<void>;
   registerIssueProvider(definition: IssueProviderDefinition): void;
-  registerHook?(hook: 'taskUpdate', handler: (taskData: unknown) => void | Promise<void>): void;
+  registerConfigHandler?(handler: () => void): void;
+  registerHook?(
+    hook: 'taskCreated' | 'taskUpdate',
+    handler: (taskData: unknown) => void | Promise<void>,
+  ): void;
   getTasks?(): Promise<Array<{
     id: string;
+    projectId?: string | null;
     parentId?: string | null;
     issueId?: string | null;
     issueProviderId?: string | null;
+    issueType?: string | null;
+    issueLastSyncedValues?: Record<string, unknown>;
   }>>;
   updateTask?(taskId: string, updates: { projectId?: string | null; parentId?: string | null }): Promise<void>;
   getAllProjects?(): Promise<Array<{
@@ -232,6 +245,9 @@ export interface PluginAPI {
     color?: 'primary' | 'accent' | 'warn';
   }): void;
   openDialog?(dialog: PluginDialogConfig): Promise<void>;
+  /** Available on newer hosts; older hosts fall back to immediate startup work. */
+  onReady?(handler: () => void | Promise<void>): void;
+  onUnload?(handler: () => void | Promise<void>): void;
   showSnack?(snack: {
     msg: string;
     type?: 'SUCCESS' | 'ERROR' | 'WARNING' | 'INFO';

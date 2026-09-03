@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import type { PluginDialogConfig } from '../src/vikunja/types.js';
 
 import {
   VIKUNJA_SECRET_KEYS,
@@ -52,6 +53,30 @@ it('fails connection checks before calling HTTP when the token is missing', asyn
   await expect(
     definition.testConnection?.({ baseUrl: 'https://vikunja.example/' }, http as never),
   ).rejects.toThrowError(/API token/i);
+  expect(http.get).not.toHaveBeenCalled();
+});
+
+it('opens the token dialog automatically when a connection attempt has no token', async () => {
+  const openDialog = vi.fn(async (_config: PluginDialogConfig) => undefined);
+  const secretApi = {
+    getSecret: vi.fn(async () => null),
+    setSecret: vi.fn(async () => undefined),
+    deleteSecret: vi.fn(async () => undefined),
+    openDialog
+  };
+  const http = {
+    get: vi.fn()
+  };
+
+  const definition = buildVikunjaIssueProviderDefinition(secretApi as never);
+
+  await expect(
+    definition.testConnection?.({ baseUrl: 'https://vikunja.example/' }, http as never),
+  ).rejects.toThrowError(/API token/i);
+  expect(openDialog).toHaveBeenCalledTimes(1);
+  expect(openDialog.mock.calls[0]?.[0].htmlContent).toContain(
+    'Token status:</strong> Not configured on this computer.',
+  );
   expect(http.get).not.toHaveBeenCalled();
 });
 

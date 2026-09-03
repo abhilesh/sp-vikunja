@@ -31,7 +31,7 @@ export function getLocalVikunjaProjectTitle(
   projectsById: Map<number, VikunjaRawProject>,
   prefix: string,
 ): string {
-  return `${prefix}${getVikunjaProjectPath(project, projectsById)}${VIKUNJA_PROJECT_MARKER_PREFIX}${project.id}]`;
+  return `${prefix}${getVikunjaProjectPath(project, projectsById)}`;
 }
 
 export function getRemoteIdFromLocalVikunjaProjectTitle(title: string): number | undefined {

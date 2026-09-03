@@ -73,6 +73,22 @@ it('registers the issue provider exactly once without issuing HTTP requests', as
   ).toBe('https://vikunja.example/tasks/42');
   expect(fetchSpy).not.toHaveBeenCalled();
 });
+it('provides helper text for every Vikunja configuration option', async () => {
+  const { buildVikunjaIssueProviderDefinition } = await import('../src/plugin.js');
+  const definition = buildVikunjaIssueProviderDefinition({
+    getSecret: vi.fn(async () => null)
+  } as never);
+
+  expect(definition.configFields).toHaveLength(5);
+  expect(definition.configFields.every((field) => field.description?.trim())).toBe(true);
+  expect(definition.configFields.map((field) => field.description)).toEqual([
+    'URL of your Vikunja server, for example https://vikunja.example. Do not append /api/v2.',
+    'Prefix used for local Super Productivity project names. Leave blank for no prefix. Suggested prefix: Vikunja · ',
+    'Choose which Vikunja projects to search and import. Selecting a parent includes all of its descendants. Leave empty for all accessible projects; automatic import still skips completed tasks and archived projects.',
+    'Creates or updates local mirrors and assigns imported tasks to their matching project. Nested Vikunja paths appear as flat names such as Parent / Child; the plugin asks before creating missing local projects, and remote projects are never changed.',
+    'Vikunja destination for tasks created from Super Productivity. This is the remote project, not the local Super Productivity project used for imported tasks.'
+  ]);
+});
 
 it('auto-registers exactly once when the host PluginAPI global is present', async () => {
   const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
@@ -121,9 +137,14 @@ it('registers when the host runner injects PluginAPI as a function parameter', a
 it('exposes a local secret-backed token setup button when dialog APIs are available', async () => {
   const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
   const api = createPluginApiStub();
-  let headerButton: { label: string; onClick: () => void } | undefined;
+  api.getSecret = vi.fn(async () => 'configured-token');
+  let headerButton: { label: string; icon?: string; onClick: () => void } | undefined;
+  let configHandler: (() => void) | undefined;
   let dialog: PluginDialogConfig | undefined;
 
+  api.registerConfigHandler = (handler) => {
+    configHandler = handler;
+  };
   api.registerHeaderButton = (button) => {
     headerButton = button;
   };
@@ -132,37 +153,186 @@ it('exposes a local secret-backed token setup button when dialog APIs are availa
   };
 
   registerVikunjaIssueProvider(api);
-  headerButton?.onClick();
+  configHandler?.();
+  await vi.waitFor(() => expect(dialog).toBeDefined());
 
-  expect(headerButton?.label).toBe('Set Vikunja Token');
+  expect(configHandler).toEqual(expect.any(Function));
+  expect(headerButton?.label).toBe('Connect Vikunja');
+  expect(headerButton?.icon).toBe('settings');
   expect(dialog?.htmlContent).toContain('type="password"');
+  expect(dialog?.htmlContent).toContain('Token status:</strong> Configured on this computer.');
   expect(dialog?.htmlContent).toContain('Stored locally in Super Productivity secret storage');
-  expect((dialog?.buttons?.[0]?.label)).toBe('Save token');
+  expect(dialog?.htmlContent).not.toContain('configured-token');
+  expect((dialog?.buttons?.[0]?.label)).toBe('Replace token');
 });
 
 it('repairs the host-selected Inbox project after provider import', async () => {
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  let taskCreatedHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
+  const updateTask = vi.fn(async () => undefined);
+
+  api.registerHook = (hook, handler) => {
+    if (hook === 'taskCreated') {
+      taskCreatedHandler = handler;
+    } else {
+      expect(hook).toBe('taskUpdate');
+    }
+  };
+  api.updateTask = updateTask;
+
+  registerVikunjaIssueProvider(api);
+  await taskCreatedHandler?.({
+    taskId: 'local-task',
+    task: {
+      id: 'local-task',
+      projectId: 'INBOX_PROJECT',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin',
+      issueLastSyncedValues: {
+        superProductivityProjectId: 'local-vikunja-project',
+      },
+    },
+  });
+
+  expect(updateTask).toHaveBeenCalledWith('local-task', {
+    projectId: 'local-vikunja-project',
+  });
+});
+
+it('repairs native backlog imports when the host omits provider sync values', async () => {
+  const storage = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, value);
+    },
+  });
+  storage.set(
+    'vikunja-super-productivity-plugin.task-project-mappings',
+    JSON.stringify({
+      'https://vikunja.example': {
+        '42': 'local-vikunja-project',
+      },
+    }),
+  );
+
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  let taskCreatedHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
+  const updateTask = vi.fn(async () => undefined);
+
+  api.registerHook = (hook, handler) => {
+    if (hook === 'taskCreated') {
+      taskCreatedHandler = handler;
+    }
+  };
+  api.updateTask = updateTask;
+
+  registerVikunjaIssueProvider(api);
+  await taskCreatedHandler?.({
+    taskId: 'local-task',
+    task: {
+      id: 'local-task',
+      projectId: 'INBOX_PROJECT',
+      issueId: '42',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin',
+    },
+  });
+
+  expect(updateTask).toHaveBeenCalledWith('local-task', {
+    projectId: 'local-vikunja-project',
+  });
+});
+
+
+it('preserves the PluginAPI receiver while repairing existing tasks', async () => {
+
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  let repairHandler: (() => void) | undefined;
+  const showSnack = vi.fn();
+  const updateTask = function (this: PluginAPI, taskId: string, updates: { projectId?: string | null }) {
+    if (this !== api) {
+      throw new Error('PluginAPI receiver was lost');
+    }
+    void taskId;
+    void updates;
+    return Promise.resolve();
+  };
+
+  api.getTasks = vi.fn(async () => [{
+    id: 'local-task',
+    projectId: 'INBOX_PROJECT',
+    issueProviderId: 'provider-config-id',
+    issueType: 'plugin:vikunja-super-productivity-plugin',
+    issueLastSyncedValues: {
+      superProductivityProjectId: 'local-vikunja-project'
+    }
+  }]);
+  api.registerHook = () => undefined;
+  api.updateTask = updateTask;
+  api.showSnack = showSnack;
+  api.registerHeaderButton = (button) => {
+    if (button.label === 'Repair Vikunja projects') {
+      repairHandler = button.onClick;
+    }
+  };
+
+  registerVikunjaIssueProvider(api);
+  repairHandler?.();
+
+  await vi.waitFor(() => expect(api.getTasks).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(showSnack).toHaveBeenCalled());
+  expect(showSnack).toHaveBeenCalledWith(expect.objectContaining({ msg: expect.stringContaining('Moved 1') }));
+});
+
+it('repairs a task on a later update from its stored remote project ID', async () => {
+  const storage = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, value);
+    },
+  });
+  storage.set(
+    'vikunja-super-productivity-plugin.local-project-mappings',
+    JSON.stringify({
+      'https://vikunja.example': {
+        '2': 'local-research',
+      },
+    }),
+  );
+
   const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
   const api = createPluginApiStub();
   let taskUpdateHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
   const updateTask = vi.fn(async () => undefined);
 
   api.registerHook = (hook, handler) => {
-    expect(hook).toBe('taskUpdate');
-    taskUpdateHandler = handler;
+    if (hook === 'taskUpdate') {
+      taskUpdateHandler = handler;
+    }
   };
   api.updateTask = updateTask;
 
   registerVikunjaIssueProvider(api);
   await taskUpdateHandler?.({
-    id: 'local-task',
-    projectId: 'INBOX_PROJECT',
-    issueLastSyncedValues: {
-      superProductivityProjectId: 'local-vikunja-project',
+    taskId: 'local-task',
+    task: {
+      id: 'local-task',
+      projectId: 'INBOX_PROJECT',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin',
+      issueLastSyncedValues: {
+        vikunjaProjectId: '2',
+      },
     },
   });
 
   expect(updateTask).toHaveBeenCalledWith('local-task', {
-    projectId: 'local-vikunja-project',
+    projectId: 'local-research',
   });
 });
 
@@ -177,13 +347,15 @@ it('links an imported child to an imported local parent', async () => {
       id: 'local-parent',
       parentId: null,
       issueId: '100',
-      issueProviderId: 'vikunja-super-productivity-plugin'
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
     },
     {
       id: 'local-child',
       parentId: null,
       issueId: '101',
-      issueProviderId: 'vikunja-super-productivity-plugin'
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
     }
   ]);
   api.registerHook = (_hook, handler) => {
@@ -216,13 +388,15 @@ it('links an imported child when the parent task reports its subtask relation', 
       id: 'local-parent',
       parentId: null,
       issueId: '100',
-      issueProviderId: 'vikunja-super-productivity-plugin'
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
     },
     {
       id: 'local-child',
       parentId: null,
       issueId: '101',
-      issueProviderId: 'vikunja-super-productivity-plugin'
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
     }
   ]);
   api.registerHook = (_hook, handler) => {
@@ -254,13 +428,15 @@ it('does not create a local stub or a cycle for missing or cyclic relations', as
       id: 'local-a',
       parentId: 'local-b',
       issueId: '100',
-      issueProviderId: 'vikunja-super-productivity-plugin'
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
     },
     {
       id: 'local-b',
       parentId: 'local-a',
       issueId: '101',
-      issueProviderId: 'vikunja-super-productivity-plugin'
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
     }
   ]);
   api.registerHook = (_hook, handler) => {
@@ -280,5 +456,5 @@ it('does not create a local stub or a cycle for missing or cyclic relations', as
   });
 
   expect(updateTask).not.toHaveBeenCalled();
-  expect(api.getTasks).toHaveBeenCalledOnce();
+  expect(api.getTasks).toHaveBeenCalledTimes(2);
 });

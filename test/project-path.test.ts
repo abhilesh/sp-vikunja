@@ -21,7 +21,7 @@ it('builds a full path for nested projects', () => {
 
   expect(getVikunjaProjectPath(projects[2], projectMap(projects))).toBe('Parent / Child / Leaf');
   expect(getLocalVikunjaProjectTitle(projects[2], projectMap(projects), 'Work: ')).toBe(
-    'Work: Parent / Child / Leaf [Vikunja:3]',
+    'Work: Parent / Child / Leaf',
   );
 });
 
