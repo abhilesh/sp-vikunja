@@ -394,6 +394,10 @@ it('propagates HTTP failures without leaking authorization headers or token valu
 });
 
 it('uses the client for provider search, fetch, and connection callbacks', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+
+  try {
   const secretApi = {
     getSecret: vi.fn(async () => 'synthetic-token')
   };
@@ -422,7 +426,7 @@ it('uses the client for provider search, fetch, and connection callbacks', async
         project_id: 9,
         priority: 3,
         due_date: '2026-08-27T09:30:00Z',
-        updated: '2026-08-26T08:15:30Z',
+        updated: '2026-10-01T08:15:30Z',
         labels: [{ id: 1, title: 'imported' }]
       };
     }
@@ -445,7 +449,7 @@ it('uses the client for provider search, fetch, and connection callbacks', async
         project_id: 9,
         priority: 3,
         due_date: '2026-08-27T09:30:00Z',
-        updated: '2026-08-26T08:15:30Z',
+        updated: '2026-10-01T08:15:30Z',
         labels: [{ id: 1, title: 'imported' }]
       }],
       page: 1,
@@ -477,7 +481,7 @@ it('uses the client for provider search, fetch, and connection callbacks', async
       dueDate: '2026-08-27T09:30:00.000Z',
       dueDay: '2026-08-27',
       dueWithTime: '2026-08-27T09:30:00.000Z',
-      lastUpdated: Date.parse('2026-08-26T08:15:30Z')
+      lastUpdated: Date.parse('2026-10-01T08:15:30Z')
     }
   ]);
   await expect(
@@ -497,8 +501,42 @@ it('uses the client for provider search, fetch, and connection callbacks', async
     dueDate: '2026-08-27T09:30:00.000Z',
     dueDay: '2026-08-27',
     dueWithTime: '2026-08-27T09:30:00.000Z',
-    lastUpdated: Date.parse('2026-08-26T08:15:30Z')
+    lastUpdated: Date.parse('2026-10-01T08:15:30Z')
   });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('keeps a stable host timestamp until the remote updated value changes', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-30T12:00:00Z'));
+
+  let updated = '2026-01-01T00:00:00Z';
+  const { http } = createHttpStub(async () => ({
+    id: 42,
+    title: 'Clock-skewed task',
+    done: false,
+    updated
+  }));
+  const definition = buildVikunjaIssueProviderDefinition({
+    getSecret: vi.fn(async () => 'synthetic-token')
+  } as never);
+
+  try {
+    const first = await definition.getById('42', { baseUrl: 'https://vikunja.example/' }, http);
+    const second = await definition.getById('42', { baseUrl: 'https://vikunja.example/' }, http);
+
+    expect(first.lastUpdated).toBe(Date.parse('2026-09-30T12:00:00Z'));
+    expect(second.lastUpdated).toBe(first.lastUpdated);
+
+    updated = '2026-01-01T00:00:01Z';
+    const changed = await definition.getById('42', { baseUrl: 'https://vikunja.example/' }, http);
+
+    expect(changed.lastUpdated).toBeGreaterThan(first.lastUpdated ?? 0);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('builds the verified frontend task URL from the normalized configured base URL', () => {

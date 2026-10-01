@@ -124,13 +124,18 @@ function toOptionalProjectId(projectId: number | undefined): string | undefined 
 }
 
 function toOptionalLastUpdated(updated: string | undefined): number | undefined {
-  if (!updated) {
+  const normalized = updated?.trim();
+
+  if (!normalized) {
     return undefined;
   }
 
-  const parsed = Date.parse(updated);
+  // Super Productivity compares this value numerically with the task's
+  // issueLastUpdated baseline. Keep the provider's timestamp as epoch
+  // milliseconds and discard malformed values instead of emitting NaN.
+  const parsed = Date.parse(normalized);
 
-  return Number.isNaN(parsed) ? undefined : parsed;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
 function toOptionalLabelIds(labels: VikunjaRawTask['labels']): string[] | undefined {

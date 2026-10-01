@@ -253,6 +253,8 @@ export interface PluginAPI {
   openDialog?(dialog: PluginDialogConfig): Promise<void>;
   /** Available on newer hosts; older hosts fall back to immediate startup work. */
   onReady?(handler: () => void | Promise<void>): void;
+  /** Available on newer hosts; replays the host's persisted-data initialization path. */
+  reInitData?(): Promise<void>;
   onUnload?(handler: () => void | Promise<void>): void;
   showSnack?(snack: {
     msg: string;

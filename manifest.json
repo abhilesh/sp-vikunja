@@ -1,7 +1,7 @@
 {
   "id": "vikunja-super-productivity-plugin",
   "name": "Vikunja",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Super Productivity issue provider for Vikunja",
   "manifestVersion": 1,
   "minSupVersion": "18.19.0",
@@ -24,7 +24,7 @@
   "iFrame": false,
   "issueProvider": {
     "allowPrivateNetwork": true,
-    "pollIntervalMs": 600000,
+    "pollIntervalMs": 60000,
     "defaultAutoAddToBacklog": true,
     "icon": "plugin-vikunja-super-productivity-plugin-icon",
     "humanReadableName": "Vikunja",

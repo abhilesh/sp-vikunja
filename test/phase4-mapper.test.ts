@@ -74,3 +74,38 @@ it('keeps optional fields absent when the raw task does not provide them', () =>
     status: 'Open'
   });
 });
+
+it('preserves a newer remote timestamp for host polling comparisons', () => {
+  const first = mapRawTaskToIssueDetails({
+    id: 42,
+    title: 'Timestamped task',
+    done: false,
+    updated: '2026-08-26T08:15:30Z'
+  });
+  const second = mapRawTaskToIssueDetails({
+    id: 42,
+    title: 'Timestamped task',
+    done: true,
+    updated: '2026-08-26T08:15:31Z'
+  });
+
+  expect(first).toMatchObject({ isDone: false, state: 'open' });
+  expect(second).toMatchObject({ isDone: true, state: 'done' });
+  expect(second.lastUpdated).toBeGreaterThan(first.lastUpdated ?? 0);
+});
+
+it('ignores blank or malformed remote timestamps', () => {
+  expect(mapRawTaskToIssueDetails({
+    id: 10,
+    title: 'No timestamp',
+    done: false,
+    updated: '   '
+  }).lastUpdated).toBeUndefined();
+
+  expect(mapRawTaskToIssueDetails({
+    id: 11,
+    title: 'Malformed timestamp',
+    done: false,
+    updated: 'not-a-real-date'
+  }).lastUpdated).toBeUndefined();
+});

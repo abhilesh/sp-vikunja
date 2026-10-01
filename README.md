@@ -42,7 +42,7 @@ npm run package
 The installable archive is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.0.zip
+dist/vikunja-super-productivity-plugin-0.1.2.zip
 ```
 
 The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
@@ -50,7 +50,7 @@ The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
 ### Install in Super Productivity
 
 1. Open `Settings → Plugins → Choose Plugin File`.
-2. Select `vikunja-super-productivity-plugin-0.1.0.zip`.
+2. Select `vikunja-super-productivity-plugin-0.1.2.zip`.
 3. Enable the Vikunja issue provider if it is not enabled automatically.
 4. Configure the provider using the steps below.
 
@@ -129,6 +129,10 @@ For an in-place plugin update, install the newer ZIP and reload Super Productivi
 - Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then open Vikunja Settings and click `Repair Vikunja projects`.
 - A project prompt was skipped: open Vikunja Settings and click `Reset Vikunja project prompt decisions`, then search or import again.
 - Connection or backlog import errors: verify the base URL, token, project filter, and the host network permission. Do not append `/api/v2` to the configured base URL.
+- Background polling: version 0.1.2 asks newer Super Productivity hosts to replay
+  their startup data initialization once, which re-arms the native polling timer
+  after the provider registers. Hosts without that optional API may still require
+  saving the Vikunja provider configuration once after startup.
 
 ## Plugin settings, maintenance actions, and icons
 

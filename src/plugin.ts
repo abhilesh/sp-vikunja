@@ -44,8 +44,45 @@ type VikunjaPluginHost = PluginSecretAPI & Partial<Pick<
   'getTasks' | 'updateTask' | 'getAllProjects' | 'addProject' | 'updateProject' | 'openDialog' | 'showSnack'
 >>;
 
+interface PollTimestampSnapshot {
+  remoteTimestamp: number;
+  hostTimestamp: number;
+}
+
 let vikunjaTokenDialogPromise: Promise<void> | null = null;
 let vikunjaProjectCreationPromptPromise: Promise<boolean> | null = null;
+
+function getHostComparableLastUpdated(
+  issueId: string,
+  baseUrl: string,
+  remoteTimestamp: number | undefined,
+  snapshots: Map<string, PollTimestampSnapshot>,
+): number | undefined {
+  if (remoteTimestamp === undefined) {
+    return undefined;
+  }
+
+  const key = `${baseUrl}\u0000${issueId}`;
+  const previous = snapshots.get(key);
+
+  // Some Vikunja installations have a server clock behind the local desktop.
+  // Super Productivity compares lastUpdated against a local Date.now() import
+  // baseline, so the real remote timestamp can be rejected even though the
+  // task changed. Keep a stable local comparison value for an unchanged remote
+  // timestamp, and advance it only when Vikunja reports a new timestamp.
+  if (previous?.remoteTimestamp === remoteTimestamp) {
+    return previous.hostTimestamp;
+  }
+
+  const hostTimestamp = Math.max(
+    remoteTimestamp,
+    Date.now(),
+    (previous?.hostTimestamp ?? 0) + 1,
+  );
+  snapshots.set(key, { remoteTimestamp, hostTimestamp });
+
+  return hostTimestamp;
+}
 
 function getSecretApi(api?: VikunjaPluginHost): VikunjaPluginHost {
   if (!api) {
@@ -842,6 +879,7 @@ function normalizeConnectionError(error: unknown): Error {
 export function buildVikunjaIssueProviderDefinition(
   secretApi?: VikunjaPluginHost,
 ): IssueProviderDefinition {
+  const pollTimestampSnapshots = new Map<string, PollTimestampSnapshot>();
   const fieldMappings: VikunjaIssueProviderFieldMapping[] = [
     {
       taskField: 'title',
@@ -1024,7 +1062,17 @@ export function buildVikunjaIssueProviderDefinition(
         ? await loadProjectSyncContext(client, getProjectSyncHost(secretApi), config, true)
         : undefined;
 
-      return mapTaskDetailsWithProjectContext(task, projectContext);
+      const issue = mapTaskDetailsWithProjectContext(task, projectContext);
+      const hostComparableLastUpdated = getHostComparableLastUpdated(
+        issue.id,
+        String(config.baseUrl ?? ''),
+        issue.lastUpdated,
+        pollTimestampSnapshots,
+      );
+
+      return hostComparableLastUpdated === issue.lastUpdated
+        ? issue
+        : { ...issue, lastUpdated: hostComparableLastUpdated };
     },
     getIssueLink(issueId, config) {
       const taskId = parseCanonicalTaskId(issueId);
@@ -1550,14 +1598,34 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
       .catch(() => {
         if (!api.onReady) {
           scheduleStartupRepairRetry();
-        }
-      });
+      }
+    });
+  };
+
+  const runStartupInitialization = async (): Promise<void> => {
+    // Super Productivity's issue polling effect starts from the host's data
+    // initialization action. A plugin can register after that action has
+    // already fired, leaving the provider's background timer unarmed until
+    // the user saves the provider settings again. Newer hosts expose this
+    // supported replay hook; use it once after registration so the normal
+    // host polling path can see Vikunja. Older hosts simply skip this step.
+    if (api.reInitData) {
+      try {
+        await api.reInitData();
+      } catch {
+        // Reinitialization is only a polling bootstrap mitigation. Do not
+        // prevent the plugin's existing startup repair from running if an
+        // older or partially initialized host rejects the request.
+      }
+    }
+
+    runStartupRepair();
   };
 
   // Also repair tasks imported by an older plugin build. getTasks() returns
   // active tasks, including completed ones that have not been archived.
   if (api.onReady) {
-    api.onReady(runStartupRepair);
+    api.onReady(runStartupInitialization);
   } else {
     runStartupRepair();
   }

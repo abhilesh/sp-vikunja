@@ -295,6 +295,29 @@ it('preserves the PluginAPI receiver while repairing existing tasks', async () =
   expect(showSnack).toHaveBeenCalledWith(expect.objectContaining({ msg: expect.stringContaining('Moved 1') }));
 });
 
+it('replays host data initialization once at startup when the host exposes it', async () => {
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  const readyHandlers: Array<() => void | Promise<void>> = [];
+  const reInitData = vi.fn(async () => undefined);
+
+  api.getTasks = vi.fn(async () => []);
+  api.registerHook = () => undefined;
+  api.updateTask = vi.fn(async () => undefined);
+  api.onReady = (handler) => {
+    readyHandlers.push(handler);
+  };
+  api.reInitData = reInitData;
+
+  registerVikunjaIssueProvider(api);
+
+  expect(readyHandlers).toHaveLength(1);
+  await readyHandlers[0]?.();
+
+  expect(reInitData).toHaveBeenCalledTimes(1);
+  expect(api.getTasks).toHaveBeenCalledTimes(1);
+});
+
 it('repairs a task on a later update from its stored remote project ID', async () => {
   const storage = new Map<string, string>();
   vi.stubGlobal('localStorage', {
