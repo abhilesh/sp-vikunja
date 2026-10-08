@@ -201,6 +201,29 @@ export interface PluginSecretAPI {
   deleteSecret(key: string): Promise<void>;
 }
 
+export interface PluginBatchTaskUpdate {
+  type: 'update';
+  taskId: string;
+  updates: {
+    parentId?: string | null;
+    subTaskIds?: string[];
+  };
+}
+
+export interface PluginBatchUpdateRequest {
+  projectId: string;
+  operations: PluginBatchTaskUpdate[];
+}
+
+export interface PluginBatchUpdateResult {
+  success: boolean;
+  errors?: Array<{
+    operationIndex: number;
+    type: string;
+    message: string;
+  }>;
+}
+
 export interface IssueProviderCreateResult {
   issueId: string;
   issueNumber?: number;
@@ -221,12 +244,14 @@ export interface PluginAPI {
     id: string;
     projectId?: string | null;
     parentId?: string | null;
+    subTaskIds?: string[];
     issueId?: string | null;
     issueProviderId?: string | null;
     issueType?: string | null;
     issueLastSyncedValues?: Record<string, unknown>;
   }>>;
-  updateTask?(taskId: string, updates: { projectId?: string | null; parentId?: string | null }): Promise<void>;
+  updateTask?(taskId: string, updates: { projectId?: string | null }): Promise<void>;
+  batchUpdateForProject?(request: PluginBatchUpdateRequest): Promise<PluginBatchUpdateResult>;
   getAllProjects?(): Promise<Array<{
     id: string;
     title: string;

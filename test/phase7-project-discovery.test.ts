@@ -102,6 +102,46 @@ it('exposes all matching tasks to the native backlog importer', async () => {
   );
 });
 
+it('reuses the project-sync context across a polling batch of task refreshes', async () => {
+  const http = createHttpStub();
+  let projectListRequestCount = 0;
+  vi.mocked(http.get).mockImplementation(async (url) => {
+    if (url.includes('/api/v2/projects')) {
+      projectListRequestCount += 1;
+      return projectEnvelope([
+        { id: 2, title: 'Project', parent_project_id: null, is_archived: false },
+      ]);
+    }
+
+    return {
+      id: 1,
+      title: 'Task',
+      project_id: 2,
+      done: false,
+      description: '',
+      labels: [],
+    };
+  });
+
+  const definition = buildVikunjaIssueProviderDefinition({
+    getSecret: vi.fn(async () => 'synthetic-token'),
+    getAllProjects: vi.fn(async () => [{ id: 'local-project', title: 'Project' }]),
+    addProject: vi.fn(async () => 'new-project'),
+    updateProject: vi.fn(async () => undefined),
+  } as never);
+
+  const config = {
+    baseUrl: 'https://vikunja.example/',
+    syncProjects: true,
+  };
+
+  for (let index = 0; index < 50; index += 1) {
+    await definition.getById(String(index + 1), config, http);
+  }
+
+  expect(projectListRequestCount).toBe(1);
+});
+
 it('skips completed tasks and archived projects during automatic import', async () => {
   const http = createHttpStub();
   vi.mocked(http.get).mockImplementation(async (url) => {

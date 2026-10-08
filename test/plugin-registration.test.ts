@@ -371,18 +371,227 @@ it('links an imported child to an imported local parent', async () => {
   const api = createPluginApiStub();
   let taskUpdateHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
   const updateTask = vi.fn(async () => undefined);
+  const batchUpdateForProject = vi.fn(async () => ({ success: true }));
 
   api.getTasks = vi.fn(async () => [
     {
       id: 'local-parent',
+      projectId: 'local-project',
       parentId: null,
+      subTaskIds: [],
       issueId: '100',
       issueProviderId: 'provider-config-id',
       issueType: 'plugin:vikunja-super-productivity-plugin'
     },
     {
       id: 'local-child',
+      projectId: 'local-project',
       parentId: null,
+      subTaskIds: [],
+      issueId: '101',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    }
+  ]);
+  api.registerHook = (_hook, handler) => {
+    taskUpdateHandler = handler;
+  };
+  api.updateTask = updateTask;
+  api.batchUpdateForProject = batchUpdateForProject;
+
+  registerVikunjaIssueProvider(api);
+  await taskUpdateHandler?.({
+    id: 'local-child',
+    projectId: 'local-project',
+    parentId: null,
+    issueLastSyncedValues: {
+      vikunjaRelationsLoaded: true,
+      vikunjaParentTaskId: '100',
+      vikunjaSubtaskTaskIds: []
+    }
+  });
+
+  expect(updateTask).not.toHaveBeenCalledWith(
+    'local-child',
+    expect.objectContaining({ parentId: expect.anything() }),
+  );
+  expect(batchUpdateForProject).toHaveBeenCalledWith({
+    projectId: 'local-project',
+    operations: [
+      {
+        type: 'update',
+        taskId: 'local-parent',
+        updates: { subTaskIds: ['local-child'] },
+      },
+      {
+        type: 'update',
+        taskId: 'local-child',
+        updates: { parentId: 'local-parent' },
+      },
+    ],
+  });
+});
+
+it('links an imported child when the parent task reports its subtask relation', async () => {
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  let taskUpdateHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
+  const updateTask = vi.fn(async () => undefined);
+  const batchUpdateForProject = vi.fn(async () => ({ success: true }));
+
+  api.getTasks = vi.fn(async () => [
+    {
+      id: 'local-parent',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '100',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    },
+    {
+      id: 'local-child',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '101',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    }
+  ]);
+  api.registerHook = (_hook, handler) => {
+    taskUpdateHandler = handler;
+  };
+  api.updateTask = updateTask;
+  api.batchUpdateForProject = batchUpdateForProject;
+
+  registerVikunjaIssueProvider(api);
+  await taskUpdateHandler?.({
+    id: 'local-parent',
+    projectId: 'local-project',
+    parentId: null,
+    subTaskIds: [],
+    issueLastSyncedValues: {
+      vikunjaRelationsLoaded: true,
+      vikunjaSubtaskTaskIds: ['101']
+    }
+  });
+
+  expect(batchUpdateForProject).toHaveBeenCalledWith({
+    projectId: 'local-project',
+    operations: [
+      {
+        type: 'update',
+        taskId: 'local-parent',
+        updates: { subTaskIds: ['local-child'] },
+      },
+      {
+        type: 'update',
+        taskId: 'local-child',
+        updates: { parentId: 'local-parent' },
+      },
+    ],
+  });
+});
+
+it('links multiple imported children in one host batch', async () => {
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  let taskUpdateHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
+  const updateTask = vi.fn(async () => undefined);
+  const batchUpdateForProject = vi.fn(async () => ({ success: true }));
+
+  api.getTasks = vi.fn(async () => [
+    {
+      id: 'local-parent',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '100',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    },
+    {
+      id: 'local-child-a',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '101',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    },
+    {
+      id: 'local-child-b',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '102',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    }
+  ]);
+  api.registerHook = (_hook, handler) => {
+    taskUpdateHandler = handler;
+  };
+  api.updateTask = updateTask;
+  api.batchUpdateForProject = batchUpdateForProject;
+
+  registerVikunjaIssueProvider(api);
+  await taskUpdateHandler?.({
+    id: 'local-parent',
+    projectId: 'local-project',
+    issueLastSyncedValues: {
+      vikunjaRelationsLoaded: true,
+      vikunjaSubtaskTaskIds: ['101', '102']
+    }
+  });
+
+  expect(batchUpdateForProject).toHaveBeenCalledTimes(1);
+  const batchRequest = (batchUpdateForProject.mock.calls as unknown as Array<[{ operations: unknown[] }]>)[0]?.[0];
+  expect(batchRequest?.operations).toEqual([
+    {
+      type: 'update',
+      taskId: 'local-parent',
+      updates: { subTaskIds: ['local-child-a', 'local-child-b'] },
+    },
+    {
+      type: 'update',
+      taskId: 'local-child-a',
+      updates: { parentId: 'local-parent' },
+    },
+    {
+      type: 'update',
+      taskId: 'local-child-b',
+      updates: { parentId: 'local-parent' },
+    },
+  ]);
+  expect(updateTask).not.toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ parentId: expect.anything() }),
+  );
+});
+
+it('keeps project repair working when the host has no batch hierarchy API', async () => {
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  let taskUpdateHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
+  const updateTask = vi.fn(async () => undefined);
+
+  api.getTasks = vi.fn(async () => [
+    {
+      id: 'local-parent',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '100',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    },
+    {
+      id: 'local-child',
+      projectId: 'INBOX_PROJECT',
+      parentId: null,
+      subTaskIds: [],
       issueId: '101',
       issueProviderId: 'provider-config-id',
       issueType: 'plugin:vikunja-super-productivity-plugin'
@@ -396,55 +605,20 @@ it('links an imported child to an imported local parent', async () => {
   registerVikunjaIssueProvider(api);
   await taskUpdateHandler?.({
     id: 'local-child',
-    parentId: null,
+    projectId: 'INBOX_PROJECT',
     issueLastSyncedValues: {
+      superProductivityProjectId: 'local-project',
       vikunjaRelationsLoaded: true,
       vikunjaParentTaskId: '100',
       vikunjaSubtaskTaskIds: []
     }
   });
 
-  expect(updateTask).toHaveBeenCalledWith('local-child', { parentId: 'local-parent' });
-});
-
-it('links an imported child when the parent task reports its subtask relation', async () => {
-  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
-  const api = createPluginApiStub();
-  let taskUpdateHandler: ((taskData: unknown) => void | Promise<void>) | undefined;
-  const updateTask = vi.fn(async () => undefined);
-
-  api.getTasks = vi.fn(async () => [
-    {
-      id: 'local-parent',
-      parentId: null,
-      issueId: '100',
-      issueProviderId: 'provider-config-id',
-      issueType: 'plugin:vikunja-super-productivity-plugin'
-    },
-    {
-      id: 'local-child',
-      parentId: null,
-      issueId: '101',
-      issueProviderId: 'provider-config-id',
-      issueType: 'plugin:vikunja-super-productivity-plugin'
-    }
-  ]);
-  api.registerHook = (_hook, handler) => {
-    taskUpdateHandler = handler;
-  };
-  api.updateTask = updateTask;
-
-  registerVikunjaIssueProvider(api);
-  await taskUpdateHandler?.({
-    id: 'local-parent',
-    parentId: null,
-    issueLastSyncedValues: {
-      vikunjaRelationsLoaded: true,
-      vikunjaSubtaskTaskIds: ['101']
-    }
-  });
-
-  expect(updateTask).toHaveBeenCalledWith('local-child', { parentId: 'local-parent' });
+  expect(updateTask).toHaveBeenCalledWith('local-child', { projectId: 'local-project' });
+  expect(updateTask).not.toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ parentId: expect.anything() }),
+  );
 });
 
 it('does not create a local stub or a cycle for missing or cyclic relations', async () => {

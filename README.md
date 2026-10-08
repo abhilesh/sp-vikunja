@@ -13,7 +13,7 @@ A Super Productivity issue-provider plugin for connecting [Vikunja](https://viku
 - Optionally mirror Vikunja project paths as local Super Productivity projects.
 - Ask before creating missing local project mirrors.
 - Pull existing Vikunja labels without creating or changing labels remotely.
-- Preserve subtask relationships locally when the host API supports the required update.
+- Preserve subtask relationships locally through Super Productivity's batch task API when the host exposes it.
 
 Vikunja is the source of truth for remote task fields. Project mirroring is
 pull-only: the plugin does not create, rename, move, or delete projects in
@@ -25,8 +25,11 @@ Vikunja.
 - A Vikunja server with REST API v2 enabled.
 - A Vikunja API token that can access the projects and tasks you want to use.
 
-Use an HTTPS Vikunja URL for normal use. Local HTTP servers require the
-Super Productivity host's private-network policy to allow the connection.
+Use an HTTPS Vikunja URL for normal use. Community ZIP installations cannot
+rely on the manifest's `allowPrivateNetwork` setting, so Vikunja instances on
+`localhost` or private LAN addresses may be blocked by the host. Use a
+publicly reachable HTTPS endpoint or a reverse proxy that is allowed by the
+Super Productivity host.
 
 ## Installation
 
@@ -42,7 +45,7 @@ npm run package
 The installable archive is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.3.zip
+dist/vikunja-super-productivity-plugin-0.1.4.zip
 ```
 
 The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
@@ -50,7 +53,7 @@ The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
 ### Install in Super Productivity
 
 1. Open `Settings → Plugins → Choose Plugin File`.
-2. Select `vikunja-super-productivity-plugin-0.1.3.zip`.
+2. Select `vikunja-super-productivity-plugin-0.1.4.zip`.
 3. Enable the Vikunja issue provider if it is not enabled automatically.
 4. Configure the provider using the steps below.
 
@@ -129,7 +132,7 @@ For an in-place plugin update, install the newer ZIP and reload Super Productivi
 - Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then open Vikunja Settings and click `Repair Vikunja projects`.
 - A project prompt was skipped: open Vikunja Settings and click `Reset Vikunja project prompt decisions`, then search or import again.
 - Connection or backlog import errors: verify the base URL, token, project filter, and the host network permission. Do not append `/api/v2` to the configured base URL.
-- Background polling: version 0.1.3 asks newer Super Productivity hosts to replay
+- Background polling: version 0.1.4 asks newer Super Productivity hosts to replay
   their startup data initialization once, which re-arms the native polling timer
   after the provider registers. The manifest requests a five-minute native polling
   interval. Hosts without that optional API may still require saving the Vikunja
@@ -169,8 +172,10 @@ and the [official example plugins](https://github.com/super-productivity/super-p
 - Deleting a local task never deletes the Vikunja task. Remote task deletion is
   not exposed by this provider.
 - Subtasks are linked locally only after both tasks have been imported, and no
-  placeholder local tasks are created. Verify subtask behavior on the target host
-  version.
+  placeholder local tasks are created. The plugin uses
+  `batchUpdateForProject()` to update the parent and child sides together;
+  project placement is updated separately. Hosts without that optional API
+  still receive project repair, but leave the task hierarchy unchanged.
 - Changing the Vikunja base URL creates a separate provider identity; existing
   links are not silently rebound to another server.
 - Network failures during task creation are treated as uncertain and require
@@ -201,5 +206,4 @@ registration, and packaging assumptions.
 
 ## License
 
-No license has been declared for this repository yet. Add a license before
-public redistribution.
+This project is distributed under the MIT License. See [LICENSE](LICENSE).
