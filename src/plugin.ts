@@ -51,6 +51,32 @@ interface PollTimestampSnapshot {
 
 let vikunjaTokenDialogPromise: Promise<void> | null = null;
 let vikunjaProjectCreationPromptPromise: Promise<boolean> | null = null;
+const vikunjaProjectSyncLocks = new Map<string, Promise<void>>();
+
+async function withVikunjaProjectSyncLock<T>(
+  baseUrl: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const key = normalizeVikunjaServerKey(baseUrl);
+  const previous = vikunjaProjectSyncLocks.get(key);
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  vikunjaProjectSyncLocks.set(key, current);
+
+  try {
+    if (previous) {
+      await previous;
+    }
+    return await operation();
+  } finally {
+    release();
+    if (vikunjaProjectSyncLocks.get(key) === current) {
+      vikunjaProjectSyncLocks.delete(key);
+    }
+  }
+}
 
 function getHostComparableLastUpdated(
   issueId: string,
@@ -457,7 +483,7 @@ async function confirmCreateMissingLocalProjects(
 }
 
 
-async function syncLocalVikunjaProjects(
+async function syncLocalVikunjaProjectsUnlocked(
   host: VikunjaPluginHost,
   projects: VikunjaRawProject[],
   projectsById: Map<number, VikunjaRawProject>,
@@ -525,6 +551,21 @@ async function syncLocalVikunjaProjects(
   }
 
   return localProjectIdByRemoteId;
+}
+
+async function syncLocalVikunjaProjects(
+  host: VikunjaPluginHost,
+  projects: VikunjaRawProject[],
+  projectsById: Map<number, VikunjaRawProject>,
+  prefix: string,
+  baseUrl: string,
+): Promise<Map<number, string>> {
+  // The lock covers the local-project read, prompt, creation, and mapping
+  // persistence. This prevents concurrent polling/import calls from all
+  // observing the same missing project and then creating duplicates.
+  return withVikunjaProjectSyncLock(baseUrl, () =>
+    syncLocalVikunjaProjectsUnlocked(host, projects, projectsById, prefix, baseUrl),
+  );
 }
 
 async function loadProjectSyncContext(

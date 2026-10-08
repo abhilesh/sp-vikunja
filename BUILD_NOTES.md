@@ -10,7 +10,7 @@ The project builds the Super Productivity plugin:
 
 - Plugin ID: `vikunja-super-productivity-plugin`
 - Display name: `Vikunja`
-- Release version: `0.1.2`
+- Release version: `0.1.3`
 - Minimum Super Productivity version: `18.19.0`
 - Provider type: `issueProvider`
 - Source repository: `git@github.com:abhilesh/sp-vikunja.git`
@@ -18,7 +18,7 @@ The project builds the Super Productivity plugin:
 The installable artifact is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.2.zip
+dist/vikunja-super-productivity-plugin-0.1.3.zip
 ```
 
 The root-level manifest field `"icon": "icon.svg"` points the plugin manager to the bundled monochrome Vikunja SVG. The `issueProvider.icon` value is `"plugin-vikunja-super-productivity-plugin-icon"`, the SVG registry name Super Productivity assigns to an uploaded plugin's bundled icon. This makes the plugin card and issue-panel icon use the same monochrome asset. The plugin-card Settings action opens the local token dialog; the Settings dialog contains the Repair and Reset maintenance actions; the token dialog uses the built-in key icon for Save/Replace and success notification.
@@ -51,14 +51,14 @@ Copy this file from the build computer to the other computer by a USB drive,
 private file transfer, or another trusted method:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.2.zip
+dist/vikunja-super-productivity-plugin-0.1.3.zip
 ```
 
 On the other computer:
 
 1. Open Super Productivity.
 2. Go to `Settings → Plugins → Choose Plugin File`.
-3. Select `vikunja-super-productivity-plugin-0.1.2.zip`.
+3. Select `vikunja-super-productivity-plugin-0.1.3.zip`.
 4. Enable/select the Vikunja issue provider if Super Productivity does not do so
    automatically.
 5. Configure the provider and test the connection.
@@ -82,7 +82,7 @@ npm run package
 The resulting file is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.2.zip
+dist/vikunja-super-productivity-plugin-0.1.3.zip
 ```
 
 Select that ZIP in Super Productivity using the same `Settings → Plugins → Choose
@@ -120,7 +120,7 @@ these steps on every computer:
    Remote-to-local project IDs are stored separately in local browser storage, so
    IDs do not appear in visible project names. Existing projects using the older
    `[Vikunja:<id>]` suffix are recognized and renamed without the suffix.
-   If a matching local project does not exist, the 0.1.2 build asks whether to
+   If a matching local project does not exist, the 0.1.3 build asks whether to
    create the missing project(s). Choosing Skip leaves those imported tasks in the
    configured default local project.
    Skip is remembered in local browser storage, scoped by Vikunja server and
@@ -133,7 +133,7 @@ these steps on every computer:
    The host's import checkbox is labelled `Auto import to default project
    (requires a default project)` (older versions may call it `Auto-add to
    backlog`). Leave it enabled to import all currently unlinked matching tasks.
-   The 0.1.2 manifest preselects this only for newly-created providers; edit an
+   The 0.1.3 manifest preselects this only for newly-created providers; edit an
    existing provider and enable it manually.
 12. Enable `Poll imported for changes and notify` and choose `Polling trigger`.
    `always` is the most predictable setting for the first bulk import. The host
@@ -180,7 +180,7 @@ not override that host policy.
   hosts with a readiness callback it runs after initial data load; on older
   hosts it retries when the initial task list is empty. A task imported before
   any mapping was recorded may still need one fresh provider search or re-import.
-- The manifest requests a 60-second polling interval. On hosts exposing the
+- The manifest requests a five-minute polling interval. On hosts exposing the
   optional `reInitData()` API, the plugin calls it once from `onReady()` so the
   host's native issue-polling effect can see the provider after startup. Hosts
   without that API retain the native behavior and may require saving the
@@ -274,15 +274,15 @@ npm run package
 Expected results for the current source:
 
 - 17 test files pass.
-- 144 tests pass.
+- 145 tests pass.
 - Production and test TypeScript projects typecheck successfully.
 - The package archive contains `manifest.json`, `icon.svg`, and `plugin.js`.
 
 Useful direct checks after packaging:
 
 ```bash
-unzip -l dist/vikunja-super-productivity-plugin-0.1.2.zip
-unzip -p dist/vikunja-super-productivity-plugin-0.1.2.zip manifest.json
+unzip -l dist/vikunja-super-productivity-plugin-0.1.3.zip
+unzip -p dist/vikunja-super-productivity-plugin-0.1.3.zip manifest.json
 ```
 
 Do not commit `node_modules/` or `dist/`. The source of truth for rebuilding is the
@@ -311,8 +311,8 @@ docker logs --tail 100 vikunja-test
 At the time these notes were updated:
 
 - The `v0.1.0` tag (`591f9d5`) is the baseline for the public release comparison.
-- The working tree contains the `0.1.2` release-preparation changes; commit and tag
-  them as `v0.1.2` before publishing the GitHub release.
+- The working tree contains the `0.1.3` release-preparation changes; commit and tag
+  them as `v0.1.3` before publishing the GitHub release.
 - `dist/` is ignored, so the installable ZIP is not committed or transferred by a
   normal clone.
 - `vikunja-test/README.md` is currently untracked. It is useful development
@@ -331,7 +331,7 @@ release validation rather than a known implementation defect:
 1. Obtain a Super Productivity host/profile that permits the manifest's private
    network access, or expose the disposable Vikunja instance through an HTTPS
    endpoint reachable by Super Productivity.
-2. Install the 0.1.2 ZIP into that host.
+2. Install the 0.1.3 ZIP into that host.
 3. Run the live matrix with disposable data:
    - plugin-card token setup, connection test, and invalid-token behavior;
    - plugin-card Settings token setup; confirm no Connect action appears in the main top bar and Repair/Reset appear in the Vikunja Settings dialog;

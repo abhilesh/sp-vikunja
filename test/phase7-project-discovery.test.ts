@@ -235,6 +235,56 @@ it('prompts before creating missing local project mirrors', async () => {
   expect(addedProjects).toEqual([{ title: 'Research' }]);
 });
 
+it('serializes concurrent project mirror creation and rechecks local projects', async () => {
+  const http = createHttpStub();
+  vi.mocked(http.get).mockImplementation(async (url) => {
+    if (url.includes('/api/v2/projects')) {
+      return projectEnvelope([{ id: 2, title: 'Research', is_archived: false }]);
+    }
+
+    return taskEnvelope([{ id: 42, title: 'Imported task', project_id: 2, done: false }]);
+  });
+  const localProjects: Array<{ id: string; title: string }> = [];
+  const addedProjects: Array<{ title: string }> = [];
+  const dialogs: PluginDialogConfig[] = [];
+  const host = {
+    getSecret: vi.fn(async () => 'synthetic-token'),
+    setSecret: vi.fn(async () => undefined),
+    deleteSecret: vi.fn(async () => undefined),
+    getAllProjects: vi.fn(async () => localProjects),
+    addProject: vi.fn(async (projectData: { title: string }) => {
+      addedProjects.push(projectData);
+      const localProject = { id: `local-${addedProjects.length}`, title: projectData.title };
+      localProjects.push(localProject);
+      return localProject.id;
+    }),
+    updateProject: vi.fn(async () => undefined),
+    openDialog: vi.fn(async (config: PluginDialogConfig) => {
+      dialogs.push(config);
+      await config.buttons?.[0]?.onClick();
+    }),
+  };
+  const definition = buildVikunjaIssueProviderDefinition(host);
+  const config = {
+    baseUrl: 'https://concurrent-project-sync.vikunja.example/',
+    projectIds: ['2'],
+    syncProjects: true,
+  };
+
+  const results = await Promise.all([
+    definition.searchIssues('imported', config, http),
+    definition.searchIssues('imported', config, http),
+  ]);
+
+  expect(addedProjects).toEqual([{ title: 'Research' }]);
+  expect(dialogs).toHaveLength(1);
+  expect(results).toHaveLength(2);
+  expect(results.flat()).toEqual([
+    expect.objectContaining({ superProductivityProjectId: 'local-1' }),
+    expect.objectContaining({ superProductivityProjectId: 'local-1' }),
+  ]);
+});
+
 it('remembers Skip for a missing project instead of prompting on every sync', async () => {
   const http = createHttpStub();
   vi.mocked(http.get).mockImplementation(async (url) => {
