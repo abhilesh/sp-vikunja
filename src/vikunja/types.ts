@@ -26,6 +26,11 @@ export interface VikunjaTaskSummary {
   vikunjaParentTaskId?: string;
   vikunjaParentTaskAmbiguous?: boolean;
   vikunjaSubtaskTaskIds?: string[];
+  /** Vikunja repeat interval in seconds, when the task is recurring. */
+  vikunjaRepeatAfter?: number;
+  /** Vikunja repeat mode (0=default, 1=monthly, 3=from-current-date). */
+  vikunjaRepeatMode?: number;
+  vikunjaIsRecurring?: boolean;
 }
 
 export interface VikunjaTaskDetails extends VikunjaTaskSummary {
@@ -250,6 +255,14 @@ export interface PluginAPI {
     issueType?: string | null;
     issueLastSyncedValues?: Record<string, unknown>;
   }>>;
+  getArchivedTasks?(): Promise<Array<{
+    id: string;
+    title?: string;
+    isDone?: boolean;
+    issueId?: string | null;
+    issueProviderId?: string | null;
+    issueType?: string | null;
+  }>>;
   updateTask?(taskId: string, updates: { projectId?: string | null }): Promise<void>;
   batchUpdateForProject?(request: PluginBatchUpdateRequest): Promise<PluginBatchUpdateResult>;
   getAllProjects?(): Promise<Array<{
@@ -318,6 +331,8 @@ export interface VikunjaRawTask {
   priority?: number;
   due_date?: string;
   updated?: string;
+  repeat_after?: number;
+  repeat_mode?: number;
   labels?: VikunjaRawLabel[] | null;
   related_tasks?: VikunjaRawRelatedTaskMap | null;
 }

@@ -172,6 +172,17 @@ function toMappedFields(
     priority: task.priority,
     lastUpdated: toOptionalLastUpdated(task.updated)
   };
+
+  if (task.repeat_mode !== undefined) {
+    fields.vikunjaRepeatMode = task.repeat_mode;
+  }
+
+  if ((task.repeat_after !== undefined && task.repeat_after > 0) || task.repeat_mode === 1) {
+    if (task.repeat_after !== undefined && task.repeat_after > 0) {
+      fields.vikunjaRepeatAfter = task.repeat_after;
+    }
+    fields.vikunjaIsRecurring = true;
+  }
   const parentTaskIds = toRelationTaskIds(task, 'parenttask');
   const subtaskTaskIds = toRelationTaskIds(task, 'subtask');
 

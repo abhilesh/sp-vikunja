@@ -1,7 +1,7 @@
 {
   "name": "vikunja-super-productivity-plugin",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json --noEmit",
     "build": "node -e \"const fs=require('node:fs'); const path='dist/vikunja-super-productivity-plugin-package'; fs.mkdirSync(path,{recursive:true}); for (const file of ['manifest.json','icon.svg']) fs.copyFileSync(file, path + '/' + file)\" && esbuild src/plugin.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=dist/vikunja-super-productivity-plugin-package/plugin.js",
-    "package": "npm run build && node -e \"const fs=require('node:fs'); const fixed=new Date('2000-01-01T00:00:00.000Z'); for (const file of ['dist/vikunja-super-productivity-plugin-package/manifest.json','dist/vikunja-super-productivity-plugin-package/icon.svg','dist/vikunja-super-productivity-plugin-package/plugin.js']) fs.utimesSync(file, fixed, fixed); fs.rmSync('dist/vikunja-super-productivity-plugin-0.1.4.zip', {force:true})\" && zip -X -FS -j -q dist/vikunja-super-productivity-plugin-0.1.4.zip dist/vikunja-super-productivity-plugin-package/manifest.json dist/vikunja-super-productivity-plugin-package/icon.svg dist/vikunja-super-productivity-plugin-package/plugin.js",
+    "package": "npm run build && node -e \"const fs=require('node:fs'); const fixed=new Date('2000-01-01T00:00:00.000Z'); for (const file of ['dist/vikunja-super-productivity-plugin-package/manifest.json','dist/vikunja-super-productivity-plugin-package/icon.svg','dist/vikunja-super-productivity-plugin-package/plugin.js']) fs.utimesSync(file, fixed, fixed); fs.rmSync('dist/vikunja-super-productivity-plugin-0.1.5.zip', {force:true})\" && zip -X -FS -j -q dist/vikunja-super-productivity-plugin-0.1.5.zip dist/vikunja-super-productivity-plugin-package/manifest.json dist/vikunja-super-productivity-plugin-package/icon.svg dist/vikunja-super-productivity-plugin-package/plugin.js",
     "dev": "esbuild src/plugin.ts --bundle --format=iife --platform=browser --target=es2022 --outfile=dist/vikunja-super-productivity-plugin-package/plugin.js --watch"
   },
   "dependencies": {

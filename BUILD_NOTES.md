@@ -10,7 +10,7 @@ The project builds the Super Productivity plugin:
 
 - Plugin ID: `vikunja-super-productivity-plugin`
 - Display name: `Vikunja`
-- Release version: `0.1.4`
+- Release version: `0.1.5`
 - Minimum Super Productivity version: `18.19.0`
 - Provider type: `issueProvider`
 - Source repository: `git@github.com:abhilesh/sp-vikunja.git`
@@ -18,7 +18,7 @@ The project builds the Super Productivity plugin:
 The installable artifact is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.4.zip
+dist/vikunja-super-productivity-plugin-0.1.5.zip
 ```
 
 The root-level manifest field `"icon": "icon.svg"` points the plugin manager to the bundled monochrome Vikunja SVG. The `issueProvider.icon` value is `"plugin-vikunja-super-productivity-plugin-icon"`, the SVG registry name Super Productivity assigns to an uploaded plugin's bundled icon. This makes the plugin card and issue-panel icon use the same monochrome asset. The plugin-card Settings action opens the local token dialog; the Settings dialog contains the Repair and Reset maintenance actions; the token dialog uses the built-in key icon for Save/Replace and success notification.
@@ -51,14 +51,14 @@ Copy this file from the build computer to the other computer by a USB drive,
 private file transfer, or another trusted method:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.4.zip
+dist/vikunja-super-productivity-plugin-0.1.5.zip
 ```
 
 On the other computer:
 
 1. Open Super Productivity.
 2. Go to `Settings → Plugins → Choose Plugin File`.
-3. Select `vikunja-super-productivity-plugin-0.1.4.zip`.
+3. Select `vikunja-super-productivity-plugin-0.1.5.zip`.
 4. Enable/select the Vikunja issue provider if Super Productivity does not do so
    automatically.
 5. Configure the provider and test the connection.
@@ -82,7 +82,7 @@ npm run package
 The resulting file is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.4.zip
+dist/vikunja-super-productivity-plugin-0.1.5.zip
 ```
 
 Select that ZIP in Super Productivity using the same `Settings → Plugins → Choose
@@ -120,7 +120,7 @@ these steps on every computer:
    Remote-to-local project IDs are stored separately in local browser storage, so
    IDs do not appear in visible project names. Existing projects using the older
    `[Vikunja:<id>]` suffix are recognized and renamed without the suffix.
-   If a matching local project does not exist, the 0.1.4 build asks whether to
+   If a matching local project does not exist, the 0.1.5 build asks whether to
    create the missing project(s). Choosing Skip leaves those imported tasks in the
    configured default local project.
    Skip is remembered in local browser storage, scoped by Vikunja server and
@@ -133,7 +133,7 @@ these steps on every computer:
    The host's import checkbox is labelled `Auto import to default project
    (requires a default project)` (older versions may call it `Auto-add to
    backlog`). Leave it enabled to import all currently unlinked matching tasks.
-   The 0.1.4 manifest preselects this only for newly-created providers; edit an
+   The 0.1.5 manifest preselects this only for newly-created providers; edit an
    existing provider and enable it manually.
 12. Enable `Poll imported for changes and notify` and choose `Polling trigger`.
    `always` is the most predictable setting for the first bulk import. The host
@@ -191,6 +191,18 @@ Use a publicly reachable HTTPS endpoint or a reverse proxy allowed by the host.
 - Task links use the normalized base URL and the numeric Vikunja task ID.
 - Titles, Markdown descriptions/notes, completion state, and due dates synchronize
   in both directions.
+- Vikunja `repeat_after`/`repeat_mode` values are retained in mapped issue data.
+  Vikunja remains the recurrence owner: completing the linked task in Super
+  Productivity lets Vikunja advance the same task to its next due date, which
+  the next poll maps back into Super Productivity. The plugin does not create
+  native Super Productivity repeat configurations, synthetic occurrence IDs, or
+  duplicate reopened tasks.
+- If the local linked task is archived when Vikunja reopens it, the plugin
+  matches the remote issue ID against archived local tasks and gives one
+  reminder to restore the existing task from Worklog. It never instructs the
+  user to add a second copy. A future/optional host `restoreTask` capability is
+  feature-detected and used when available. Do not enable native Repeat for a
+  task that remains recurring in Vikunja.
 - Due dates support a date-only value and an explicit UTC date-time value.
 - Existing Vikunja labels are pulled with stable remote label IDs. The plugin does
   not create or attach labels remotely.
@@ -285,8 +297,8 @@ Expected results for the current source:
 Useful direct checks after packaging:
 
 ```bash
-unzip -l dist/vikunja-super-productivity-plugin-0.1.4.zip
-unzip -p dist/vikunja-super-productivity-plugin-0.1.4.zip manifest.json
+unzip -l dist/vikunja-super-productivity-plugin-0.1.5.zip
+unzip -p dist/vikunja-super-productivity-plugin-0.1.5.zip manifest.json
 ```
 
 Do not commit `node_modules/` or `dist/`. The source of truth for rebuilding is the
@@ -315,8 +327,8 @@ docker logs --tail 100 vikunja-test
 At the time these notes were updated:
 
 - The `v0.1.0` tag (`591f9d5`) is the baseline for the public release comparison.
-- The working tree contains the `0.1.4` release-preparation changes; commit and tag
-  them as `v0.1.4` before publishing the GitHub release. Leave `v0.1.3` unchanged.
+- The working tree contains the `0.1.5` recurring-task follow-up; commit and tag
+  it as `v0.1.5` before publishing the GitHub release. Leave `v0.1.4` unchanged.
 - `dist/` is ignored, so the installable ZIP is not committed or transferred by a
   normal clone.
 - `vikunja-test/README.md` is currently untracked. It is useful development
@@ -330,7 +342,7 @@ the destination computer.
 ## 9. Release validation
 
 The code and automated verification are in good shape. Before asking for
-community re-review, validate the actual `0.1.4` ZIP in a separate disposable
+community re-review, validate the actual `0.1.5` ZIP in a separate disposable
 Super Productivity instance/profile with Super Productivity Sync disabled. Do
 not use the production instance or production credentials.
 
@@ -344,7 +356,7 @@ by the host).
 
 1. Expose the disposable Vikunja instance through a publicly reachable HTTPS
    endpoint or another address allowed by the Super Productivity host.
-2. Install the 0.1.4 ZIP into the disposable host.
+2. Install the 0.1.5 ZIP into the disposable host.
 3. Run the live matrix with disposable data:
    - plugin-card token setup, connection test, and invalid-token behavior;
    - plugin-card Settings token setup; confirm no Connect action appears in the main top bar and Repair/Reset appear in the Vikunja Settings dialog;
@@ -360,6 +372,9 @@ by the host).
    - restart/reconciliation behavior;
    - offline/network failure behavior;
    - deletion-safety and duplicate-name checks.
+   - recurring `Life / Chores` tasks: complete/archive a local copy, reopen the
+     same Vikunja task ID, confirm the plugin detects it once, and confirm the
+     host restore path leaves one active linked task rather than an active duplicate.
 4. Preserve the final ZIP outside `dist/` if the test computer must install it
    without having Node.js/npm available.
 

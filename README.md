@@ -45,7 +45,7 @@ npm run package
 The installable archive is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.4.zip
+dist/vikunja-super-productivity-plugin-0.1.5.zip
 ```
 
 The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
@@ -53,7 +53,7 @@ The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
 ### Install in Super Productivity
 
 1. Open `Settings → Plugins → Choose Plugin File`.
-2. Select `vikunja-super-productivity-plugin-0.1.4.zip`.
+2. Select `vikunja-super-productivity-plugin-0.1.5.zip`.
 3. Enable the Vikunja issue provider if it is not enabled automatically.
 4. Configure the provider using the steps below.
 
@@ -123,6 +123,26 @@ Set `Default project for new tasks` to the remote Vikunja project that should re
 
 After import, edit the task normally in either application. Titles, Markdown notes, completion state, and due dates are synchronized in both directions during the host synchronization cycle. Local project placement, Super Productivity time tracking, planning, and focus data remain local to Super Productivity.
 
+### Recurring Vikunja tasks
+
+Vikunja recurrence metadata is preserved in the provider issue data, but the
+current public Super Productivity plugin API does not expose creation of native
+repeat configurations or restoration of archived tasks. Imported Vikunja tasks
+therefore remain issue-linked tasks rather than becoming native recurring tasks.
+
+Vikunja remains the recurrence owner: complete the linked task in Super
+Productivity, and Vikunja advances the same task to its next due date. The next
+poll brings the updated due date and open state back to Super Productivity. Do
+not configure native Super Productivity **Repeat** for the same task.
+
+When Vikunja reopens the same task ID for its next occurrence after the local
+task was archived, this plugin detects the match and shows a single reminder.
+Restore the existing local task from Worklog, then complete it in Super
+Productivity. Do not use the issue panel's Add action to create a second copy.
+Hosts that expose an in-place `restoreTask` plugin method can restore these
+matches automatically. The plugin does not manufacture synthetic occurrence
+IDs or create duplicate local tasks.
+
 ### Update the plugin or move to another computer
 
 For an in-place plugin update, install the newer ZIP and reload Super Productivity. Existing linked tasks, provider configuration, local project mappings, and time tracking belong to the Super Productivity profile and are not stored in the plugin ZIP. On a new computer, migrate or import the Super Productivity data separately, then enter the Vikunja token again through the plugin card Settings action.
@@ -132,7 +152,7 @@ For an in-place plugin update, install the newer ZIP and reload Super Productivi
 - Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then open Vikunja Settings and click `Repair Vikunja projects`.
 - A project prompt was skipped: open Vikunja Settings and click `Reset Vikunja project prompt decisions`, then search or import again.
 - Connection or backlog import errors: verify the base URL, token, project filter, and the host network permission. Do not append `/api/v2` to the configured base URL.
-- Background polling: version 0.1.4 asks newer Super Productivity hosts to replay
+- Background polling: version 0.1.5 asks newer Super Productivity hosts to replay
   their startup data initialization once, which re-arms the native polling timer
   after the provider registers. The manifest requests a five-minute native polling
   interval. Hosts without that optional API may still require saving the Vikunja

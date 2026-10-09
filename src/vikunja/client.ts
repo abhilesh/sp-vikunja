@@ -196,6 +196,8 @@ function isRawTask(value: unknown): value is VikunjaRawTask {
     && (value.priority === undefined || isNumber(value.priority))
     && (value.due_date === undefined || isString(value.due_date))
     && (value.updated === undefined || isString(value.updated))
+    && (value.repeat_after === undefined || isNumber(value.repeat_after))
+    && (value.repeat_mode === undefined || isNumber(value.repeat_mode))
     && (
       value.labels === undefined
       || value.labels === null

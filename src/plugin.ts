@@ -29,6 +29,7 @@ import type {
   VikunjaTaskSummary,
   PluginBatchTaskUpdate,
 } from './vikunja/types.js';
+import { findReopenedVikunjaTasks } from './vikunja/reopened-tasks.js';
 
 interface HostPluginGlobal {
   PluginAPI?: PluginAPI;
@@ -42,8 +43,11 @@ declare const PluginAPI: PluginAPI | undefined;
 
 type VikunjaPluginHost = PluginSecretAPI & Partial<Pick<
   PluginAPI,
-  'getTasks' | 'updateTask' | 'batchUpdateForProject' | 'getAllProjects' | 'addProject' | 'updateProject' | 'openDialog' | 'showSnack'
->>;
+  'getTasks' | 'getArchivedTasks' | 'updateTask' | 'batchUpdateForProject' | 'getAllProjects' | 'addProject' | 'updateProject' | 'openDialog' | 'showSnack'
+>> & {
+  /** Optional host API proposed for restoring archived issue tasks in-place. */
+  restoreTask?(taskId: string): Promise<void>;
+};
 
 interface PollTimestampSnapshot {
   remoteTimestamp: number;
@@ -982,6 +986,100 @@ export function buildVikunjaIssueProviderDefinition(
 ): IssueProviderDefinition {
   const pollTimestampSnapshots = new Map<string, PollTimestampSnapshot>();
   const projectSyncContextCache = new Map<string, ProjectSyncContextCacheEntry>();
+  const notifiedReopenedIssueIds = new Set<string>();
+  const notifiedRecurringConversionIssueIds = new Set<string>();
+
+  const notifyRecurringConversionReminders = (
+    tasks: VikunjaTaskSummary[],
+    excludedIssueIds: Set<string> = new Set(),
+  ): void => {
+    if (!secretApi?.showSnack) {
+      return;
+    }
+
+    const newlyDetected = tasks.filter((task) => (
+      task.vikunjaIsRecurring === true
+      && !excludedIssueIds.has(task.id)
+      && !notifiedRecurringConversionIssueIds.has(task.id)
+    ));
+
+    if (newlyDetected.length === 0) {
+      return;
+    }
+
+    for (const task of newlyDetected) {
+      notifiedRecurringConversionIssueIds.add(task.id);
+    }
+
+    const taskDescription = newlyDetected.length === 1
+      ? `Vikunja recurring task "${newlyDetected[0].title}" is linked.`
+      : `${newlyDetected.length} recurring Vikunja tasks are linked.`;
+
+    secretApi.showSnack({
+      msg: `${taskDescription} Vikunja remains the recurrence owner: complete it in Super Productivity and let the next sync apply Vikunja's next due date. Do not enable native Repeat for this task.`,
+      type: 'INFO',
+      ico: 'repeat',
+    });
+  };
+
+  const reconcileReopenedArchivedTasks = async (
+    remoteTasks: VikunjaTaskSummary[],
+  ): Promise<Set<string>> => {
+    if (!secretApi?.getArchivedTasks || remoteTasks.length === 0) {
+      return new Set();
+    }
+
+    let archivedTasks: Awaited<ReturnType<NonNullable<VikunjaPluginHost['getArchivedTasks']>>>;
+    try {
+      archivedTasks = await secretApi.getArchivedTasks();
+    } catch {
+      return new Set();
+    }
+
+    const reopenedTasks = findReopenedVikunjaTasks(remoteTasks, archivedTasks);
+    if (reopenedTasks.length === 0) {
+      return new Set();
+    }
+
+    const reopenedIssueIds = new Set(reopenedTasks.map((task) => task.remoteIssueId));
+
+    if (secretApi.restoreTask) {
+      for (const task of reopenedTasks) {
+        try {
+          await secretApi.restoreTask(task.archivedTaskId);
+        } catch {
+          // A host can expose the method while a task disappears between the
+          // archive read and restore. Continue with the remaining matches.
+        }
+      }
+      return reopenedIssueIds;
+    }
+
+    const newlyDetected = reopenedTasks.filter((task) => {
+      if (notifiedReopenedIssueIds.has(task.remoteIssueId)) {
+        return false;
+      }
+      notifiedReopenedIssueIds.add(task.remoteIssueId);
+      return true;
+    });
+
+    if (newlyDetected.length > 0) {
+      const hasRecurringTask = newlyDetected.some((task) => task.remoteIsRecurring === true);
+      secretApi.showSnack?.({
+        msg: newlyDetected.length === 1
+          ? hasRecurringTask
+            ? 'Vikunja reopened a recurring task that is archived in Super Productivity. Restore the existing task from Worklog, then complete it in Super Productivity. Keep recurrence enabled in Vikunja; do not use native Repeat or add a second copy.'
+            : 'Vikunja reopened an archived task. Restore the existing task from Worklog instead of adding a second copy.'
+          : hasRecurringTask
+            ? `Vikunja reopened ${newlyDetected.length} archived tasks, including a recurring task. Restore the existing tasks from Worklog, then complete them in Super Productivity. Keep recurrence enabled in Vikunja; do not use native Repeat or add duplicates.`
+            : `Vikunja reopened ${newlyDetected.length} archived tasks. Restore the existing tasks from Worklog instead of adding duplicates.`,
+        type: 'INFO',
+        ico: 'restore',
+      });
+    }
+
+    return reopenedIssueIds;
+  };
   const fieldMappings: VikunjaIssueProviderFieldMapping[] = [
     {
       taskField: 'title',
@@ -1156,11 +1254,14 @@ export function buildVikunjaIssueProviderDefinition(
       });
     },
     async getNewIssuesForBacklog(config, http: IssueProviderHttp) {
-      return getVikunjaTaskSummaries('', config, http, secretApi, {
+      const tasks = await getVikunjaTaskSummaries('', config, http, secretApi, {
         activeOnly: true,
         projectSyncContextCache,
         refreshProjectContext: true,
       });
+      const reopenedIssueIds = await reconcileReopenedArchivedTasks(tasks);
+      notifyRecurringConversionReminders(tasks, reopenedIssueIds);
+      return tasks;
     },
     async getById(issueId, config, http: IssueProviderHttp) {
       const taskId = parseCanonicalTaskId(issueId);
