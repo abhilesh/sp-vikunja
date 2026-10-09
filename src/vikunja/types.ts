@@ -229,6 +229,13 @@ export interface PluginBatchUpdateResult {
   }>;
 }
 
+export interface PluginTaskStateUpdates {
+  projectId?: string | null;
+  isDone?: boolean;
+  dueDay?: string | null;
+  dueWithTime?: number | null;
+}
+
 export interface IssueProviderCreateResult {
   issueId: string;
   issueNumber?: number;
@@ -250,6 +257,9 @@ export interface PluginAPI {
     projectId?: string | null;
     parentId?: string | null;
     subTaskIds?: string[];
+    isDone?: boolean;
+    dueDay?: string | null;
+    dueWithTime?: number | null;
     issueId?: string | null;
     issueProviderId?: string | null;
     issueType?: string | null;
@@ -263,7 +273,7 @@ export interface PluginAPI {
     issueProviderId?: string | null;
     issueType?: string | null;
   }>>;
-  updateTask?(taskId: string, updates: { projectId?: string | null }): Promise<void>;
+  updateTask?(taskId: string, updates: PluginTaskStateUpdates): Promise<void>;
   batchUpdateForProject?(request: PluginBatchUpdateRequest): Promise<PluginBatchUpdateResult>;
   getAllProjects?(): Promise<Array<{
     id: string;

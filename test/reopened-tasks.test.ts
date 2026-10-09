@@ -105,6 +105,71 @@ it('preserves Vikunja recurrence metadata in mapped backlog issues', async () =>
   });
 });
 
+it('reopens an active linked task and applies Vikunja next due date during polling', async () => {
+  const updateTask = vi.fn(async function (this: unknown) {
+    if (this !== host) {
+      throw new Error('PluginAPI receiver was lost');
+    }
+  });
+  let host: Record<string, unknown>;
+  host = {
+    ...(createHost() as Record<string, unknown>),
+    getTasks: async function (this: unknown) {
+      if (this !== host) {
+        throw new Error('PluginAPI receiver was lost');
+      }
+      return [
+        {
+          id: 'local-276',
+          issueId: '276',
+          issueProviderId: 'provider-instance',
+          issueType: 'plugin:vikunja-super-productivity-plugin',
+          isDone: true,
+          dueDay: '2026-10-09',
+          dueWithTime: Date.parse('2026-10-09T08:00:00.000Z'),
+        },
+      ];
+    },
+    updateTask,
+  };
+  const definition = buildVikunjaIssueProviderDefinition(host as never);
+  const http: IssueProviderHttp = {
+    get: vi.fn(async () => ({
+      items: [
+        {
+          id: 276,
+          title: 'Pay Rent for Tillermans Court',
+          project_id: 13,
+          done: false,
+          due_date: '2026-10-10T08:00:00.000Z',
+          repeat_after: 2592000,
+          repeat_mode: 0,
+        },
+      ],
+      page: 1,
+      per_page: 1000,
+      total: 1,
+      total_pages: 1,
+    })) as IssueProviderHttp['get'],
+    post: vi.fn() as IssueProviderHttp['post'],
+    put: vi.fn() as IssueProviderHttp['put'],
+    patch: vi.fn() as IssueProviderHttp['patch'],
+    delete: vi.fn() as IssueProviderHttp['delete'],
+    request: vi.fn() as IssueProviderHttp['request'],
+  };
+
+  await definition.getNewIssuesForBacklog?.(
+    { baseUrl: 'https://vikunja.example/' },
+    http,
+  );
+
+  expect(updateTask).toHaveBeenCalledWith('local-276', {
+    isDone: false,
+    dueDay: '2026-10-10',
+    dueWithTime: Date.parse('2026-10-10T08:00:00.000Z'),
+  });
+});
+
 it('warns once when the current host cannot restore a reopened archived task', async () => {
   const showSnack = vi.fn();
   const getArchivedTasks = vi.fn(async () => [

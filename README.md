@@ -2,6 +2,10 @@
 
 A Super Productivity issue-provider plugin for connecting [Vikunja](https://vikunja.io/) to [Super Productivity](https://super-productivity.com/) through the Vikunja REST API v2.
 
+Use Vikunja as the remote source for task data while working with those tasks
+inside Super Productivity. The plugin keeps the two applications linked without
+creating a second copy of a task on the server.
+
 ## Features
 
 - Search and import Vikunja tasks from the Super Productivity issue panel.
@@ -31,9 +35,39 @@ rely on the manifest's `allowPrivateNetwork` setting, so Vikunja instances on
 publicly reachable HTTPS endpoint or a reverse proxy that is allowed by the
 Super Productivity host.
 
+### Vikunja API token permissions
+
+Create the token in `Vikunja → Settings → API Tokens` and apply the smallest
+set of permissions that matches your workflow:
+
+- Project and task read access is required to list projects, search tasks,
+  import tasks, and poll for changes.
+- Task write access is required in each target project to push title, notes,
+  completion, and due-date changes back to Vikunja.
+- Task-create access is additionally required if you create new Vikunja tasks
+  from Super Productivity.
+- If the project is shared, the token's user must have at least Vikunja
+  **Read & Write** access to that project for push-back and task creation.
+
+The plugin does not create, rename, move, archive, or delete Vikunja projects,
+and it does not create or attach labels, so project-administration and label
+write permissions are not required. Permission names can vary by Vikunja
+version; select the corresponding project/task read and task write/create
+permissions shown by your server. See Vikunja's [API v2 documentation](https://vikunja.io/docs/api-v2/)
+and [permission guide](https://vikunja.io/docs/permissions/) for the current
+server-specific details.
+
 ## Installation
 
+### Install from a release ZIP
+
+Download the versioned ZIP from the repository's [GitHub Releases page](https://github.com/abhilesh/sp-vikunja/releases).
+The ZIP is the recommended installation format for normal use.
+
 ### Build from source
+
+This option is intended for contributors and users who want to build a local
+package.
 
 ```bash
 npm ci
@@ -125,62 +159,44 @@ After import, edit the task normally in either application. Titles, Markdown not
 
 ### Recurring Vikunja tasks
 
-Vikunja recurrence metadata is preserved in the provider issue data, but the
-current public Super Productivity plugin API does not expose creation of native
-repeat configurations or restoration of archived tasks. Imported Vikunja tasks
-therefore remain issue-linked tasks rather than becoming native recurring tasks.
+Vikunja owns recurrence for linked tasks. The plugin preserves the recurrence
+metadata but does not create a second native Super Productivity recurrence.
 
 Vikunja remains the recurrence owner: complete the linked task in Super
 Productivity, and Vikunja advances the same task to its next due date. The next
 poll brings the updated due date and open state back to Super Productivity. Do
 not configure native Super Productivity **Repeat** for the same task.
 
-When Vikunja reopens the same task ID for its next occurrence after the local
-task was archived, this plugin detects the match and shows a single reminder.
-Restore the existing local task from Worklog, then complete it in Super
-Productivity. Do not use the issue panel's Add action to create a second copy.
-Hosts that expose an in-place `restoreTask` plugin method can restore these
-matches automatically. The plugin does not manufacture synthetic occurrence
-IDs or create duplicate local tasks.
+For a task that is still present in Super Productivity, the provider poll
+reconciles Vikunja's open state and next due date. A task that Super Productivity
+still shows as completed therefore returns to the active list without creating
+another local copy.
 
-### Update the plugin or move to another computer
-
-For an in-place plugin update, install the newer ZIP and reload Super Productivity. Existing linked tasks, provider configuration, local project mappings, and time tracking belong to the Super Productivity profile and are not stored in the plugin ZIP. On a new computer, migrate or import the Super Productivity data separately, then enter the Vikunja token again through the plugin card Settings action.
+If the local task was already archived when Vikunja reopens it, restore the
+existing task from Worklog when prompted. Do not use the issue panel's Add
+action, because that can create a second local copy. The plugin does not create
+synthetic occurrence IDs.
 
 ### Troubleshooting
 
 - Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then open Vikunja Settings and click `Repair Vikunja projects`.
 - A project prompt was skipped: open Vikunja Settings and click `Reset Vikunja project prompt decisions`, then search or import again.
 - Connection or backlog import errors: verify the base URL, token, project filter, and the host network permission. Do not append `/api/v2` to the configured base URL.
-- Background polling: version 0.1.5 asks newer Super Productivity hosts to replay
-  their startup data initialization once, which re-arms the native polling timer
-  after the provider registers. The manifest requests a five-minute native polling
-  interval. Hosts without that optional API may still require saving the Vikunja
-  provider configuration once after startup.
+- Background polling: the plugin requests a one-time provider refresh after
+  startup so supported Super Productivity hosts resume their native polling
+  timer. The normal polling interval is five minutes. If polling does not start
+  after an app restart, open the Vikunja provider settings and save the
+  configuration once, then report the host version with the issue.
 
-## Plugin settings, maintenance actions, and icons
+## Settings and maintenance
 
 Connection setup is available through the Vikunja plugin card's Settings action
 under `Settings → Plugins`. The plugin does not add a permanent Connect button
 to Super Productivity's main top bar.
 
-The Settings icon on the plugin card is supplied by Super Productivity and
-cannot be replaced by this plugin.
-
-The Vikunja Settings dialog includes:
-
-- `Save token` / `Replace token` uses the built-in `key` icon.
-- `Repair Vikunja projects` uses the built-in `account_tree` icon.
-- `Reset Vikunja project prompt decisions` uses the built-in `refresh` icon.
-
-The bundled monochrome Vikunja SVG is used for the plugin card and issue-panel
-provider.
-
-Standard Super Productivity examples commonly use a side-panel entry or
-keyboard shortcut rather than a persistent header button. Header buttons remain
-available through the API for plugins that need frequent one-click actions. See
-the [official plugin development guide](https://github.com/super-productivity/super-productivity/blob/master/docs/plugin-development.md)
-and the [official example plugins](https://github.com/super-productivity/super-productivity/tree/master/packages/plugin-dev).
+The Vikunja Settings dialog provides token management, project repair, and a
+way to reset previously skipped project-creation prompts. The bundled
+monochrome Vikunja icon identifies the plugin card and issue-panel provider.
 
 ## Synchronization behavior
 
@@ -191,11 +207,11 @@ and the [official example plugins](https://github.com/super-productivity/super-p
 - Project mirroring and local project assignment are pull-only.
 - Deleting a local task never deletes the Vikunja task. Remote task deletion is
   not exposed by this provider.
-- Subtasks are linked locally only after both tasks have been imported, and no
-  placeholder local tasks are created. The plugin uses
-  `batchUpdateForProject()` to update the parent and child sides together;
-  project placement is updated separately. Hosts without that optional API
-  still receive project repair, but leave the task hierarchy unchanged.
+- Subtasks are linked locally after both tasks have been imported, even when the
+  child arrives after the parent. No placeholder local tasks are created.
+  Project placement and task hierarchy are repaired separately. Hosts with
+  hierarchy support keep the parent/child relationship; older hosts keep the
+  tasks flat while preserving the task links.
 - Changing the Vikunja base URL creates a separate provider identity; existing
   links are not silently rebound to another server.
 - Network failures during task creation are treated as uncertain and require

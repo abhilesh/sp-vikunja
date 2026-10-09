@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { build } from 'esbuild';
-import type { PluginAPI, PluginDialogConfig } from '../src/vikunja/types.js';
+import type { IssueProviderHttp, PluginAPI, PluginDialogConfig } from '../src/vikunja/types.js';
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -569,6 +569,95 @@ it('links multiple imported children in one host batch', async () => {
     expect.anything(),
     expect.objectContaining({ parentId: expect.anything() }),
   );
+});
+
+it('reconciles a child added after its parent was already imported', async () => {
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  const updateTask = vi.fn(async () => undefined);
+  const batchUpdateForProject = vi.fn(async () => ({ success: true }));
+  let providerDefinition: {
+    getNewIssuesForBacklog?: (config: Record<string, unknown>, http: IssueProviderHttp) => Promise<unknown[]>;
+  } | undefined;
+
+  api.getTasks = vi.fn(async () => [
+    {
+      id: 'local-parent',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '100',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    },
+    {
+      id: 'local-child',
+      projectId: 'local-project',
+      parentId: null,
+      subTaskIds: [],
+      issueId: '101',
+      issueProviderId: 'provider-config-id',
+      issueType: 'plugin:vikunja-super-productivity-plugin'
+    }
+  ]);
+  api.registerIssueProvider = (definition) => {
+    providerDefinition = definition as typeof providerDefinition;
+  };
+  api.registerHook = () => undefined;
+  api.getSecret = vi.fn(async () => 'synthetic-token');
+  api.updateTask = updateTask;
+  api.batchUpdateForProject = batchUpdateForProject;
+
+  registerVikunjaIssueProvider(api);
+
+  const http: IssueProviderHttp = {
+    get: vi.fn(async () => ({
+      items: [
+        {
+          id: 100,
+          title: 'Parent',
+          project_id: 2,
+          done: false,
+          related_tasks: { subtask: [{ id: 101, title: 'Child', project_id: 2 }] }
+        },
+        {
+          id: 101,
+          title: 'Child',
+          project_id: 2,
+          done: false
+        }
+      ],
+      page: 1,
+      per_page: 1000,
+      total: 2,
+      total_pages: 1
+    })) as IssueProviderHttp['get'],
+    post: vi.fn() as IssueProviderHttp['post'],
+    put: vi.fn() as IssueProviderHttp['put'],
+    patch: vi.fn() as IssueProviderHttp['patch'],
+    delete: vi.fn() as IssueProviderHttp['delete'],
+    request: vi.fn() as IssueProviderHttp['request']
+  };
+
+  await providerDefinition?.getNewIssuesForBacklog?.({
+    baseUrl: 'https://vikunja.example/'
+  }, http);
+
+  await vi.waitFor(() => expect(batchUpdateForProject).toHaveBeenCalledWith({
+    projectId: 'local-project',
+    operations: [
+      {
+        type: 'update',
+        taskId: 'local-parent',
+        updates: { subTaskIds: ['local-child'] },
+      },
+      {
+        type: 'update',
+        taskId: 'local-child',
+        updates: { parentId: 'local-parent' },
+      },
+    ],
+  }), { timeout: 1000 });
 });
 
 it('keeps project repair working when the host has no batch hierarchy API', async () => {

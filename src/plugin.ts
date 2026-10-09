@@ -28,6 +28,7 @@ import type {
   VikunjaRawProject,
   VikunjaTaskSummary,
   PluginBatchTaskUpdate,
+  PluginTaskStateUpdates,
 } from './vikunja/types.js';
 import { findReopenedVikunjaTasks } from './vikunja/reopened-tasks.js';
 
@@ -198,10 +199,16 @@ interface ProjectSyncContextCacheEntry {
   promise: Promise<ProjectSyncContext>;
 }
 
+interface VikunjaTaskRelationMapping {
+  parentTaskId?: string;
+  subtaskTaskIds: string[];
+}
+
 interface VikunjaTaskSummaryOptions {
   activeOnly?: boolean;
   refreshProjectContext?: boolean;
   projectSyncContextCache?: Map<string, ProjectSyncContextCacheEntry>;
+  replaceRelationMappings?: boolean;
 }
 
 const PROJECT_SYNC_CONTEXT_CACHE_TTL_MS = 300_000;
@@ -379,6 +386,166 @@ function persistVikunjaTaskProjectMappings(
   } catch {
     // In-memory mappings still cover the current session if browser storage is unavailable.
   }
+}
+
+function normalizeVikunjaTaskRelationMapping(value: unknown): VikunjaTaskRelationMapping | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const hasRelationFields = Object.prototype.hasOwnProperty.call(value, 'parentTaskId')
+    || Object.prototype.hasOwnProperty.call(value, 'subtaskTaskIds');
+  if (!hasRelationFields) {
+    return undefined;
+  }
+
+  const parentTaskId = isCanonicalRemoteTaskId(value.parentTaskId)
+    ? value.parentTaskId
+    : undefined;
+  const subtaskTaskIds = Array.isArray(value.subtaskTaskIds)
+    ? [...new Set(value.subtaskTaskIds.filter(isCanonicalRemoteTaskId))]
+    : [];
+
+  return { parentTaskId, subtaskTaskIds };
+}
+
+function persistVikunjaTaskRelationMappings(
+  baseUrl: string,
+  mappings: Map<string, VikunjaTaskRelationMapping>,
+  replaceScope = false,
+): void {
+  const serverKey = normalizeVikunjaServerKey(baseUrl);
+  const scopePrefix = `${serverKey}::`;
+  if (replaceScope) {
+    for (const key of vikunjaTaskRelationMappings.keys()) {
+      if (key.startsWith(scopePrefix)) {
+        vikunjaTaskRelationMappings.delete(key);
+      }
+    }
+  }
+
+  const normalizedMappings = new Map<string, VikunjaTaskRelationMapping>();
+  for (const [remoteTaskId, mapping] of mappings) {
+    if (!isCanonicalRemoteTaskId(remoteTaskId)) {
+      continue;
+    }
+
+    const normalized = normalizeVikunjaTaskRelationMapping(mapping);
+    if (normalized) {
+      normalizedMappings.set(remoteTaskId, normalized);
+      vikunjaTaskRelationMappings.set(
+        `${serverKey}::${remoteTaskId}`,
+        normalized,
+      );
+    }
+  }
+
+  if (mappings.size === 0 && !replaceScope) {
+    return;
+  }
+
+  try {
+    const stored = globalThis.localStorage?.getItem(VIKUNJA_TASK_RELATION_MAPPINGS_STORAGE_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : {};
+    const scopes = isRecord(parsed) ? { ...parsed } : {};
+    const scoped = replaceScope
+      ? {}
+      : isRecord(scopes[serverKey])
+        ? { ...scopes[serverKey] }
+        : {};
+
+    for (const [remoteTaskId, mapping] of normalizedMappings) {
+      scoped[remoteTaskId] = mapping;
+    }
+
+    scopes[serverKey] = scoped;
+    globalThis.localStorage?.setItem(
+      VIKUNJA_TASK_RELATION_MAPPINGS_STORAGE_KEY,
+      JSON.stringify(scopes),
+    );
+  } catch {
+    // In-memory mappings still repair imports during the current session.
+  }
+}
+
+function getStoredVikunjaTaskRelationMapping(
+  remoteTaskId: string,
+): VikunjaTaskRelationMapping | undefined {
+  const candidates = new Map<string, VikunjaTaskRelationMapping>();
+
+  for (const [key, mapping] of vikunjaTaskRelationMappings) {
+    if (key.endsWith(`::${remoteTaskId}`)) {
+      candidates.set(JSON.stringify(mapping), mapping);
+    }
+  }
+
+  try {
+    const stored = globalThis.localStorage?.getItem(VIKUNJA_TASK_RELATION_MAPPINGS_STORAGE_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : {};
+
+    if (isRecord(parsed)) {
+      for (const scoped of Object.values(parsed)) {
+        if (!isRecord(scoped)) {
+          continue;
+        }
+
+        const mapping = normalizeVikunjaTaskRelationMapping(scoped[remoteTaskId]);
+        if (mapping) {
+          candidates.set(JSON.stringify(mapping), mapping);
+        }
+      }
+    }
+  } catch {
+    // Use any in-memory mapping available.
+  }
+
+  return candidates.size === 1 ? [...candidates.values()][0] : undefined;
+}
+
+function getStoredVikunjaParentTaskIds(remoteTaskId: string): string[] {
+  const parentTaskIds = new Set<string>();
+
+  const addMapping = (parentTaskId: string, mapping: VikunjaTaskRelationMapping): void => {
+    if (mapping.subtaskTaskIds.includes(remoteTaskId)) {
+      parentTaskIds.add(parentTaskId);
+    }
+  };
+
+  for (const [key, mapping] of vikunjaTaskRelationMappings) {
+    const separatorIndex = key.lastIndexOf('::');
+    const parentTaskId = key.slice(separatorIndex + 2);
+    if (separatorIndex >= 0 && isCanonicalRemoteTaskId(parentTaskId)) {
+      addMapping(parentTaskId, mapping);
+    }
+  }
+
+  try {
+    const stored = globalThis.localStorage?.getItem(VIKUNJA_TASK_RELATION_MAPPINGS_STORAGE_KEY);
+    const parsed: unknown = stored ? JSON.parse(stored) : {};
+
+    if (isRecord(parsed)) {
+      for (const scoped of Object.values(parsed)) {
+        if (!isRecord(scoped)) {
+          continue;
+        }
+
+        for (const [parentTaskId, value] of Object.entries(scoped)) {
+          if (!isCanonicalRemoteTaskId(parentTaskId)) {
+            continue;
+          }
+
+          const mapping = normalizeVikunjaTaskRelationMapping(value);
+          if (mapping) {
+            addMapping(parentTaskId, mapping);
+          }
+        }
+      }
+    }
+  } catch {
+    // Use any in-memory mappings available.
+  }
+
+  return [...parentTaskIds];
 }
 
 function getStoredVikunjaTaskProjectId(remoteTaskId: string): string | undefined {
@@ -726,18 +893,31 @@ async function getVikunjaTaskSummaries(
         && (task.project_id === undefined || !archivedProjectIds.has(task.project_id)),
       )
     : filteredTasks;
-  const mappedTasks = importableTasks.map((task) => mapTaskWithProjectContext(task, projectContext));
+  const mappedFilteredTasks = filteredTasks.map((task) => mapTaskWithProjectContext(task, projectContext));
+  persistVikunjaTaskRelationMappings(
+    String(config.baseUrl ?? ''),
+    new Map(
+      mappedFilteredTasks
+        .filter((task) => task.vikunjaRelationsLoaded === true)
+        .map((task) => [task.id, {
+          parentTaskId: task.vikunjaParentTaskId,
+          subtaskTaskIds: task.vikunjaSubtaskTaskIds ?? [],
+        }]),
+    ),
+    options.replaceRelationMappings === true,
+  );
   if (projectContext) {
     persistVikunjaTaskProjectMappings(
       String(config.baseUrl ?? ''),
       new Map(
-        mappedTasks
+        mappedFilteredTasks
           .filter((task) => typeof task.superProductivityProjectId === 'string')
           .map((task) => [task.id, task.superProductivityProjectId as string]),
       ),
     );
   }
-  return mappedTasks;
+  const importableTaskIds = new Set(importableTasks.map((task) => String(task.id)));
+  return mappedFilteredTasks.filter((task) => importableTaskIds.has(task.id));
 }
 
 function parseDefaultProjectId(config: Record<string, unknown>): number {
@@ -1022,6 +1202,84 @@ export function buildVikunjaIssueProviderDefinition(
     });
   };
 
+  let activeTaskStateReconciliationPromise: Promise<void> | undefined;
+  const reconcileActiveLinkedTaskState = async (
+    remoteTasks: VikunjaTaskSummary[],
+  ): Promise<void> => {
+    // PluginAPI exposes these methods on a class-backed bridge. Preserve the
+    // receiver when passing them into the reconciliation loop; otherwise the
+    // host rejects the call after `this` is lost and the best-effort catch below
+    // makes the missed reactivation look like a successful poll.
+    const getTasks = secretApi?.getTasks?.bind(secretApi);
+    const updateTask = secretApi?.updateTask?.bind(secretApi);
+    if (!getTasks || !updateTask || remoteTasks.length === 0) {
+      return;
+    }
+
+    if (activeTaskStateReconciliationPromise !== undefined) {
+      return activeTaskStateReconciliationPromise;
+    }
+
+    const reconcile = async (): Promise<void> => {
+      let localTasks: Array<LocalTaskHierarchyRecord>;
+      try {
+        localTasks = await getTasks();
+      } catch {
+        return;
+      }
+
+      const remoteTasksById = new Map(
+        remoteTasks
+          .filter((task) => isCanonicalRemoteTaskId(task.id))
+          .map((task) => [task.id, task]),
+      );
+
+      for (const localTask of localTasks) {
+        if (!isVikunjaLinkedTask(localTask) || !isCanonicalRemoteTaskId(localTask.issueId)) {
+          continue;
+        }
+
+        const remoteTask = remoteTasksById.get(localTask.issueId);
+        const remoteTaskIsOpen = remoteTask?.isDone === false || remoteTask?.state === 'open';
+        if (!remoteTask || !remoteTaskIsOpen) {
+          continue;
+        }
+
+        const updates: PluginTaskStateUpdates = {};
+        if (localTask.isDone === true) {
+          updates.isDone = false;
+        }
+
+        if (remoteTask.dueDay !== undefined && localTask.dueDay !== remoteTask.dueDay) {
+          updates.dueDay = remoteTask.dueDay;
+        }
+
+        if (remoteTask.dueWithTime !== undefined) {
+          const dueWithTime = Date.parse(remoteTask.dueWithTime);
+          if (Number.isFinite(dueWithTime) && localTask.dueWithTime !== dueWithTime) {
+            updates.dueWithTime = dueWithTime;
+          }
+        }
+
+        if (Object.keys(updates).length === 0) {
+          continue;
+        }
+
+        try {
+          await updateTask(localTask.id, updates);
+        } catch {
+          // A host may expose only a subset of task updates. Keep the provider
+          // poll successful and let the normal issue-provider sync retry later.
+        }
+      }
+    };
+
+    activeTaskStateReconciliationPromise = reconcile().finally(() => {
+      activeTaskStateReconciliationPromise = undefined;
+    });
+    return activeTaskStateReconciliationPromise;
+  };
+
   const reconcileReopenedArchivedTasks = async (
     remoteTasks: VikunjaTaskSummary[],
   ): Promise<Set<string>> => {
@@ -1258,9 +1516,15 @@ export function buildVikunjaIssueProviderDefinition(
         activeOnly: true,
         projectSyncContextCache,
         refreshProjectContext: true,
+        replaceRelationMappings: true,
       });
       const reopenedIssueIds = await reconcileReopenedArchivedTasks(tasks);
+      await reconcileActiveLinkedTaskState(tasks);
       notifyRecurringConversionReminders(tasks, reopenedIssueIds);
+      // The host may return already-linked tasks from the backlog poll without
+      // emitting task hooks for them. Schedule a relation repair after the
+      // host has finished importing any newly discovered children.
+      scheduleVikunjaHierarchyRepair?.();
       return tasks;
     },
     async getById(issueId, config, http: IssueProviderHttp) {
@@ -1279,6 +1543,15 @@ export function buildVikunjaIssueProviderDefinition(
         : undefined;
 
       const issue = mapTaskDetailsWithProjectContext(task, projectContext);
+      if (issue.vikunjaRelationsLoaded === true) {
+        persistVikunjaTaskRelationMappings(
+          String(config.baseUrl ?? ''),
+          new Map([[issue.id, {
+            parentTaskId: issue.vikunjaParentTaskId,
+            subtaskTaskIds: issue.vikunjaSubtaskTaskIds ?? [],
+          }]]),
+        );
+      }
       const hostComparableLastUpdated = getHostComparableLastUpdated(
         issue.id,
         String(config.baseUrl ?? ''),
@@ -1419,6 +1692,7 @@ async function saveVikunjaTokenFromDialog(api: VikunjaPluginHost): Promise<void>
 }
 
 let repairVikunjaProjects: (() => Promise<number>) | undefined;
+let scheduleVikunjaHierarchyRepair: (() => void) | undefined;
 
 function createVikunjaTokenDialog(
   api: VikunjaPluginHost,
@@ -1520,7 +1794,9 @@ const VIKUNJA_ISSUE_TYPE = `plugin:${VIKUNJA_PLUGIN_ID}`;
 const VIKUNJA_SKIPPED_PROJECTS_STORAGE_KEY = `${VIKUNJA_PLUGIN_ID}.skipped-local-projects`;
 const VIKUNJA_PROJECT_MAPPINGS_STORAGE_KEY = `${VIKUNJA_PLUGIN_ID}.local-project-mappings`;
 const VIKUNJA_TASK_PROJECT_MAPPINGS_STORAGE_KEY = `${VIKUNJA_PLUGIN_ID}.task-project-mappings`;
+const VIKUNJA_TASK_RELATION_MAPPINGS_STORAGE_KEY = `${VIKUNJA_PLUGIN_ID}.task-relation-mappings`;
 const vikunjaTaskProjectMappings = new Map<string, string>();
+const vikunjaTaskRelationMappings = new Map<string, VikunjaTaskRelationMapping>();
 const vikunjaSkippedProjectKeys = new Set(loadSkippedVikunjaProjectKeys());
 
 function isVikunjaIssueType(value: unknown): boolean {
@@ -1532,6 +1808,9 @@ interface LocalTaskHierarchyRecord {
   projectId?: string | null;
   parentId?: string | null;
   subTaskIds?: string[];
+  isDone?: boolean;
+  dueDay?: string | null;
+  dueWithTime?: number | null;
   issueId?: string | null;
   issueProviderId?: string | null;
   issueType?: string | null;
@@ -1680,10 +1959,15 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
       async () => {
         try {
           await batchUpdateForProject({ projectId, operations: batchOperations });
-        } catch {
+        } catch (error) {
           // Local hierarchy repair is best-effort. Project placement and the
           // remote issue synchronization must continue if an older host or a
           // transient local batch failure rejects this optional operation.
+          api.showSnack?.({
+            msg: `Vikunja hierarchy repair failed: ${error instanceof Error ? error.message : 'host rejected the batch update'}`,
+            type: 'WARNING',
+            ico: 'account_tree',
+          });
         }
       },
     );
@@ -1722,6 +2006,18 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     }
 
     const effectiveSyncValues = syncValues ?? {};
+    const storedRelationMapping = isCanonicalRemoteTaskId(taskData.issueId)
+      ? getStoredVikunjaTaskRelationMapping(taskData.issueId)
+      : undefined;
+    const storedParentTaskIds = isCanonicalRemoteTaskId(taskData.issueId)
+      ? getStoredVikunjaParentTaskIds(taskData.issueId)
+      : [];
+    const reverseStoredParentTaskId = storedParentTaskIds.length === 1
+      ? storedParentTaskIds[0]
+      : undefined;
+    const relationsLoaded = effectiveSyncValues.vikunjaRelationsLoaded === true
+      || storedRelationMapping !== undefined
+      || reverseStoredParentTaskId !== undefined;
     const remoteProjectId = typeof effectiveSyncValues.vikunjaProjectId === 'string'
       && isCanonicalRemoteTaskId(effectiveSyncValues.vikunjaProjectId)
       ? effectiveSyncValues.vikunjaProjectId
@@ -1733,7 +2029,7 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
       ? getStoredVikunjaLocalProjectId(remoteProjectId)
       : undefined;
 
-    if (!syncValues && !storedProjectId && !mappedRemoteProjectId) {
+    if (!syncValues && !storedProjectId && !mappedRemoteProjectId && !storedRelationMapping) {
       return;
     }
 
@@ -1758,7 +2054,7 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     }
 
     let linkedTasks: LocalTaskHierarchyRecord[] = [];
-    if (includeRelations && effectiveSyncValues.vikunjaRelationsLoaded === true && api.getTasks) {
+    if (includeRelations && relationsLoaded && api.getTasks) {
       try {
         linkedTasks = await api.getTasks();
       } catch {
@@ -1778,21 +2074,36 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     }
 
     const hierarchyOperations = new Map<string, PluginBatchTaskUpdate['updates']>();
-    if (includeRelations && effectiveSyncValues.vikunjaRelationsLoaded === true) {
-      const parentRemoteId = effectiveSyncValues.vikunjaParentTaskAmbiguous === true
-        ? undefined
-        : isCanonicalRemoteTaskId(effectiveSyncValues.vikunjaParentTaskId)
-          ? effectiveSyncValues.vikunjaParentTaskId
-          : undefined;
+    if (includeRelations && relationsLoaded) {
+      const storedRelationSnapshotIsAuthoritative = useStoredProjectMapping
+        && storedRelationMapping !== undefined;
+      const syncParentRemoteId = effectiveSyncValues.vikunjaRelationsLoaded === true
+        ? effectiveSyncValues.vikunjaParentTaskAmbiguous === true
+          ? undefined
+          : isCanonicalRemoteTaskId(effectiveSyncValues.vikunjaParentTaskId)
+            ? effectiveSyncValues.vikunjaParentTaskId
+            : undefined
+        : undefined;
+      const parentRemoteId = storedRelationSnapshotIsAuthoritative
+        ? storedRelationMapping?.parentTaskId ?? reverseStoredParentTaskId
+        : syncParentRemoteId
+          ?? storedRelationMapping?.parentTaskId
+          ?? reverseStoredParentTaskId;
       const localParent = parentRemoteId ? linkedTaskByRemoteId.get(parentRemoteId) : undefined;
 
       if (localParent) {
         addParentChildOperations(hierarchyOperations, hierarchyTasks, localParent, currentTask);
       }
 
-      const childRemoteIds = Array.isArray(effectiveSyncValues.vikunjaSubtaskTaskIds)
+      const syncChildRemoteIds = effectiveSyncValues.vikunjaRelationsLoaded === true
+        && Array.isArray(effectiveSyncValues.vikunjaSubtaskTaskIds)
         ? effectiveSyncValues.vikunjaSubtaskTaskIds.filter(isCanonicalRemoteTaskId)
-        : [];
+        : undefined;
+      const childRemoteIds = storedRelationSnapshotIsAuthoritative
+        ? storedRelationMapping?.subtaskTaskIds ?? []
+        : syncChildRemoteIds
+          ?? storedRelationMapping?.subtaskTaskIds
+          ?? [];
 
       for (const childRemoteId of childRemoteIds) {
         const localChild = linkedTaskByRemoteId.get(childRemoteId);
@@ -1807,12 +2118,6 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
       await applyLocalHierarchyUpdates(hierarchyProjectId ?? undefined, hierarchyOperations);
     }
   };
-
-  // Native issue imports first place a new task in the provider's configured
-  // default project. Repair that placement after the host has created the
-  // task, using the project ID captured in issueLastSyncedValues.
-  api.registerHook('taskCreated', (payload) => handleTaskHook(payload, true, true));
-  api.registerHook('taskUpdate', (payload) => handleTaskHook(payload, true, true));
 
   const reconcileExistingTaskProjects = async (): Promise<number> => {
     lastReconciledTaskCount = 0;
@@ -1847,13 +2152,50 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
       ) {
         movedCount += 1;
       }
-      await handleTaskHook(task, false, true);
+      await handleTaskHook(task, true, true);
     }
     return movedCount;
   };
   repairVikunjaProjects = reconcileExistingTaskProjects;
 
   let lastReconciledTaskCount = 0;
+  let hierarchyRepairTimer: ReturnType<typeof setTimeout> | undefined;
+  let hierarchyRepairInProgress: Promise<number> | undefined;
+  const scheduleHierarchyRepair = (): void => {
+    if (hierarchyRepairTimer !== undefined) {
+      clearTimeout(hierarchyRepairTimer);
+    }
+
+    // Imports are created asynchronously by the host. Waiting for the current
+    // import batch to settle lets the repair see both sides of a Vikunja
+    // parent/child relation instead of only whichever task arrived first.
+    hierarchyRepairTimer = setTimeout(() => {
+      hierarchyRepairTimer = undefined;
+      if (hierarchyRepairInProgress !== undefined) {
+        scheduleHierarchyRepair();
+        return;
+      }
+
+      hierarchyRepairInProgress = reconcileExistingTaskProjects()
+        .catch(() => 0)
+        .finally(() => {
+          hierarchyRepairInProgress = undefined;
+        });
+    }, 250);
+  };
+  scheduleVikunjaHierarchyRepair = scheduleHierarchyRepair;
+
+  // Native issue imports first place a new task in the provider's configured
+  // default project. Repair that placement after the host has created the
+  // task, using the project ID captured in issueLastSyncedValues. A delayed
+  // reconciliation is also scheduled because taskCreated can fire before the
+  // sibling task from the same import batch is available through getTasks().
+  const handleTaskHookAndScheduleRepair = (payload: unknown): void => {
+    void handleTaskHook(payload, true, true).finally(scheduleHierarchyRepair);
+  };
+  api.registerHook('taskCreated', handleTaskHookAndScheduleRepair);
+  api.registerHook('taskUpdate', handleTaskHookAndScheduleRepair);
+
   const startupRetryTimers = new Set<ReturnType<typeof setTimeout>>();
   const startupRetryDelays = [1000, 3000, 7000];
   const scheduleStartupRepairRetry = (attempt = 0): void => {
@@ -1877,11 +2219,18 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     startupRetryTimers.add(timer);
   };
   api.onUnload?.(() => {
+    if (hierarchyRepairTimer !== undefined) {
+      clearTimeout(hierarchyRepairTimer);
+      hierarchyRepairTimer = undefined;
+    }
     for (const timer of startupRetryTimers) {
       clearTimeout(timer);
     }
     startupRetryTimers.clear();
     repairVikunjaProjects = undefined;
+    if (scheduleVikunjaHierarchyRepair === scheduleHierarchyRepair) {
+      scheduleVikunjaHierarchyRepair = undefined;
+    }
   });
 
   const runStartupRepair = (): void => {
