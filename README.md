@@ -25,7 +25,9 @@ Vikunja.
 
 ## Requirements
 
-- Super Productivity 18.19.0 or newer.
+- Super Productivity 19.2.0 or newer. Super Productivity 19.2 added the
+  native fix that starts issue-provider polling when a plugin registers after
+  application startup.
 - A Vikunja server with REST API v2 enabled.
 - A Vikunja API token that can access the projects and tasks you want to use.
 
@@ -79,7 +81,7 @@ npm run package
 The installable archive is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.5.zip
+dist/vikunja-super-productivity-plugin-0.2.0.zip
 ```
 
 The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
@@ -87,7 +89,7 @@ The ZIP contains `manifest.json`, `icon.svg`, and `plugin.js` at its root.
 ### Install in Super Productivity
 
 1. Open `Settings → Plugins → Choose Plugin File`.
-2. Select `vikunja-super-productivity-plugin-0.1.5.zip`.
+2. Select `vikunja-super-productivity-plugin-0.2.0.zip`.
 3. Enable the Vikunja issue provider if it is not enabled automatically.
 4. Configure the provider using the steps below.
 
@@ -173,8 +175,10 @@ still shows as completed therefore returns to the active list without creating
 another local copy.
 
 If the local task was already archived when Vikunja reopens it, restore the
-existing task from Worklog when prompted. Do not use the issue panel's Add
-action, because that can create a second local copy. The plugin does not create
+existing task from Worklog. The public Super Productivity API does not
+guarantee that the plugin can restore an archived task automatically, and some
+hosts may not show a restore warning. Do not use the issue panel's Add action,
+because that can create a second local copy. The plugin does not create
 synthetic occurrence IDs.
 
 ### Troubleshooting
@@ -182,11 +186,9 @@ synthetic occurrence IDs.
 - Tasks still in the staging project: enable project mirroring, create or approve the missing local mirrors, then open Vikunja Settings and click `Repair Vikunja projects`.
 - A project prompt was skipped: open Vikunja Settings and click `Reset Vikunja project prompt decisions`, then search or import again.
 - Connection or backlog import errors: verify the base URL, token, project filter, and the host network permission. Do not append `/api/v2` to the configured base URL.
-- Background polling: the plugin requests a one-time provider refresh after
-  startup so supported Super Productivity hosts resume their native polling
-  timer. The normal polling interval is five minutes. If polling does not start
-  after an app restart, open the Vikunja provider settings and save the
-  configuration once, then report the host version with the issue.
+- Background polling: Super Productivity 19.2.0 and newer rebuilds native
+  polling when a plugin provider registers after startup. No provider-settings
+  resave is required. The normal polling interval is five minutes.
 
 ## Settings and maintenance
 

@@ -10,21 +10,18 @@ instructions are available in [README.md](README.md).
 | --- | --- |
 | Plugin ID | `vikunja-super-productivity-plugin` |
 | Display name | `Vikunja` |
-| Current version | `0.1.5` |
-| Minimum Super Productivity version | `18.19.0` |
+| Current version | `0.2.0` |
+| Minimum Super Productivity version | `19.2.0` |
 | Plugin type | `issueProvider` |
 | License | MIT |
-| Release tag | [`v0.1.5`](https://github.com/abhilesh/sp-vikunja/releases/tag/v0.1.5) |
+| Release tag | [`v0.2.0`](https://github.com/abhilesh/sp-vikunja/releases/tag/v0.2.0) |
 | Source repository | [`abhilesh/sp-vikunja`](https://github.com/abhilesh/sp-vikunja) |
 
 The installable artifact is:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.5.zip
+dist/vikunja-super-productivity-plugin-0.2.0.zip
 ```
-
-The archive is generated output and is not committed to Git. It is attached to
-the GitHub release and can also be rebuilt from a clean checkout.
 
 ## Artifact and runtime model
 
@@ -66,7 +63,7 @@ npm run package
 The package command creates:
 
 ```text
-dist/vikunja-super-productivity-plugin-0.1.5.zip
+dist/vikunja-super-productivity-plugin-0.2.0.zip
 ```
 
 ## Installation and configuration
@@ -129,9 +126,8 @@ identity; existing links are not silently rebound to another server.
   creation, nested remote paths are represented as stable flat local names such
   as `Parent / Child`.
 - Imported parent/child tasks are linked with `batchUpdateForProject()`, which is
-  available in Super Productivity 19.1.0. Project placement is updated
-  separately. Older hosts that do not expose this method retain the tasks but
-  cannot apply the local hierarchy.
+  available in the required Super Productivity 19.2.0 host line. Project
+  placement is updated separately.
 - Ambiguous or cyclic relationships are ignored safely; placeholder tasks are
   not created.
 
@@ -142,14 +138,14 @@ metadata, sends completion state back to Vikunja, and maps the next due date and
 open state back during the next poll.
 
 If Vikunja reopens a task whose local Super Productivity copy has been archived,
-the plugin matches the existing remote issue ID and is designed to show a
-reminder to restore the task from Worklog. It does not create a synthetic
-occurrence or a duplicate local task. Hosts exposing an optional in-place
-`restoreTask` capability may restore the match automatically. Native Super
-Productivity Repeat should not be configured for a task that remains recurring
-in Vikunja.
+the plugin matches the existing remote issue ID and does not create a synthetic
+occurrence or a duplicate local task. The public host API does not guarantee an
+in-place restore operation, so the existing task may need to be restored from
+Worklog manually. Hosts exposing an optional in-place `restoreTask` capability
+may restore the match automatically. Native Super Productivity Repeat should
+not be configured for a task that remains recurring in Vikunja.
 
-The final v0.1.5 working-tree package also reconciles linked tasks that remain
+The v0.2.0 package also reconciles linked tasks that remain
 active but locally completed. This path explicitly reopens the local task and
 applies Vikunja's next due date during the provider poll. The host API methods
 are bound before use because Super Productivity exposes them through a
@@ -186,17 +182,17 @@ dist/                         Ignored local build output
 
 ## Automated verification
 
-The v0.1.5 source and package were verified with the following checks:
+The v0.2.0 source and package were verified with the following checks:
 
 | Check | Result |
 | --- | --- |
-| `npm test` | Passed: 18 test files, 155 tests |
+| `npm test` | Passed: 18 test files, 156 tests |
 | `npm run typecheck` | Passed for production and test TypeScript projects |
 | `npm run build` | Passed; browser bundle generated with esbuild |
 | `npm run package` | Passed; versioned ZIP generated |
 | ZIP root-content validation | Passed: exactly `manifest.json`, `icon.svg`, and `plugin.js` |
-| ZIP manifest validation | Passed: version `0.1.5`, five-minute polling, expected permissions |
-| `git diff --check` | Passed for the current working tree; no commit performed |
+| ZIP manifest validation | Passed: version `0.2.0`, minimum host `19.2.0`, five-minute polling, expected permissions |
+| `git diff --check` | Passed: no whitespace errors in the release diff |
 
 The automated suite covers authentication, field mapping, polling contracts,
 project mirroring, hierarchy updates, recurrence metadata, reopened archived
@@ -205,61 +201,42 @@ boundaries. Automated tests use synthetic HTTP and host API implementations.
 
 ## Live validation status
 
-The packaged ZIP has been exercised against a disposable Vikunja fixture through
-a temporary public HTTPS endpoint on Super Productivity `19.1.0`, with
-Super Productivity Sync disabled.
+The packaged v0.2.0 ZIP was installed and tested in a disposable Super
+Productivity 19.2.0 profile against a disposable Vikunja instance exposed over
+public HTTPS. Super Productivity Sync was disabled.
 
-### Verified
+The live run passed the following checks:
 
-- The packaged plugin installed and enabled.
-- Token setup and provider configuration succeeded with a correctly scoped
-  disposable token.
-- The packaged ZIP reached the disposable Vikunja instance through a temporary
-  HTTPS endpoint; the endpoint was shut down after testing.
-- A Vikunja task was imported with its label and due date.
-- Enabling the host's automatic backlog-import option imported the remaining
-  active tasks into the selected local staging project.
-- A fresh parent/child pair imported with the child nested under the parent,
-  exercising `batchUpdateForProject()` on Super Productivity 19.1.0.
-- After reinstalling the rebuilt package and restarting the disposable host,
-  the parent/child relationship remained visible with the child nested beneath
-  its parent. The Vikunja fixture retained the corresponding `subtask` and
-  `parenttask` relation records.
-- With “Preserve Vikunja project structure locally” enabled, a fresh task
-  imported into the expected local project mirror; repeated searches did not
-  create duplicate tasks or projects.
-- A linked task changed remotely and was updated by the native polling cycle
-  after a Super Productivity restart.
-- Completing a linked task in Super Productivity pushed its completion state to
-  Vikunja; searching for that task again did not create a second local copy.
-- Completing a linked recurring task advanced the same Vikunja task to its next
-  daily due date and reopened it on the server.
-- After the server reopened linked recurring tasks, the rebuilt package moved
-  active-but-completed local copies back into the active list and applied the
-  next due dates after the host restart.
-- A temporary packaged test build with a 10-second polling interval was used to
-  repeat the archived recurring-task transition with automatic backlog import
-  and background polling enabled. The source manifest and normal ZIP were
-  restored to the five-minute interval afterward.
-- The ZIP-installed plugin was blocked from reaching a localhost endpoint,
-  confirming the private-network limitation for community-installed plugins.
+- token setup and HTTPS connectivity;
+- import through the packaged ZIP;
+- Super Productivity-to-Vikunja completion updates;
+- automatic polling after a Super Productivity restart without resaving the
+  provider configuration;
+- project mirroring with one local mirror and no duplicate project;
+- parent/child task nesting;
+- Vikunja-owned recurrence, including reopening the task and importing its next
+  due date during the unattended background poll.
 
-## Known host limitations
+For background polling, the host must be configured with a default Super
+Productivity staging project and `Always (in background)` as the polling
+trigger. With `When context is open` and no default project, the host does not
+request the automatic backlog poll; this is host configuration rather than a
+plugin failure.
 
-### Startup polling workaround
+## Host compatibility
 
-The plugin retains a one-time `reInitData()` call from `onReady()` because older
-hosts registered plugin providers after the native polling effect was initialized.
-This is a compatibility workaround, not an additional polling loop. It can be
-removed or gated after the host-side polling fix represented by Super Productivity
-PR #10165 is included in a released host version.
+Super Productivity 19.2.0 or newer is required. Starting with v19.2, the host
+rebuilds issue-provider polling when a plugin registers after the initial sync.
+The plugin therefore relies on the host's native polling path and does not
+replay application initialization or require provider settings to be saved
+again after a restart.
 
 ### Archived recurring tasks
 
 The public plugin API does not guarantee an in-place archived-task restore method
 or native repeat-configuration creation. The source includes archived/reopened
-task detection and warning logic, but neither the normal v0.1.5 run nor the
-temporary 10-second polling run triggered that warning after the host archived
-the local task. Until the host exposes a reliable restore and polling path, the
-safe fallback is to restore the existing task from Worklog. The plugin must not
-create a duplicate local task or synthetic recurrence ID.
+task detection and warning logic, but the live runs did not reliably trigger a
+warning or restore the archived local copy after Vikunja reopened it. Until the
+host exposes a reliable restore and polling path, the safe fallback is to
+restore the existing task from Worklog. The plugin must not create a duplicate
+local task or synthetic recurrence ID.

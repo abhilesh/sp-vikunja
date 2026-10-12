@@ -2239,8 +2239,9 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     }
     void reconcileExistingTaskProjects()
       .then(() => {
-        // Super Productivity 18.19 does not expose onReady. Retry only when
-        // that older host returned an empty task store during plugin startup.
+        // Retry only when the host returned an empty task store during plugin
+        // startup. This keeps startup hierarchy repair reliable when the host
+        // is still restoring its task data.
         if (!api.onReady && lastReconciledTaskCount === 0) {
           scheduleStartupRepairRetry();
         }
@@ -2252,32 +2253,10 @@ function registerVikunjaProjectAssignmentHook(api: PluginAPI): void {
     });
   };
 
-  const runStartupInitialization = async (): Promise<void> => {
-    // Super Productivity's issue polling effect starts from the host's data
-    // initialization action. A plugin can register after that action has
-    // already fired, leaving the provider's background timer unarmed until
-    // the user saves the provider settings again. Newer hosts expose this
-    // supported replay hook; use it once after registration so the normal
-    // host polling path can see Vikunja. Older hosts simply skip this step.
-    // This workaround can be removed after the host-side polling registration
-    // fix for #10112/#10165 is released.
-    if (api.reInitData) {
-      try {
-        await api.reInitData();
-      } catch {
-        // Reinitialization is only a polling bootstrap mitigation. Do not
-        // prevent the plugin's existing startup repair from running if an
-        // older or partially initialized host rejects the request.
-      }
-    }
-
-    runStartupRepair();
-  };
-
   // Also repair tasks imported by an older plugin build. getTasks() returns
   // active tasks, including completed ones that have not been archived.
   if (api.onReady) {
-    api.onReady(runStartupInitialization);
+    api.onReady(runStartupRepair);
   } else {
     runStartupRepair();
   }

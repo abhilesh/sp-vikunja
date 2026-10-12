@@ -295,7 +295,27 @@ it('preserves the PluginAPI receiver while repairing existing tasks', async () =
   expect(showSnack).toHaveBeenCalledWith(expect.objectContaining({ msg: expect.stringContaining('Moved 1') }));
 });
 
-it('replays host data initialization once at startup when the host exposes it', async () => {
+it('runs startup reconciliation without replaying host data initialization', async () => {
+  const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
+  const api = createPluginApiStub();
+  const readyHandlers: Array<() => void | Promise<void>> = [];
+
+  api.getTasks = vi.fn(async () => []);
+  api.registerHook = () => undefined;
+  api.updateTask = vi.fn(async () => undefined);
+  api.onReady = (handler) => {
+    readyHandlers.push(handler);
+  };
+
+  registerVikunjaIssueProvider(api);
+
+  expect(readyHandlers).toHaveLength(1);
+  await readyHandlers[0]?.();
+
+  expect(api.getTasks).toHaveBeenCalledTimes(1);
+});
+
+it('does not call the removed host initialization replay even if a legacy host exposes it', async () => {
   const { registerVikunjaIssueProvider } = await import('../src/plugin.js');
   const api = createPluginApiStub();
   const readyHandlers: Array<() => void | Promise<void>> = [];
@@ -307,14 +327,12 @@ it('replays host data initialization once at startup when the host exposes it', 
   api.onReady = (handler) => {
     readyHandlers.push(handler);
   };
-  api.reInitData = reInitData;
+  (api as PluginAPI & { reInitData: () => Promise<void> }).reInitData = reInitData;
 
   registerVikunjaIssueProvider(api);
-
-  expect(readyHandlers).toHaveLength(1);
   await readyHandlers[0]?.();
 
-  expect(reInitData).toHaveBeenCalledTimes(1);
+  expect(reInitData).not.toHaveBeenCalled();
   expect(api.getTasks).toHaveBeenCalledTimes(1);
 });
 
